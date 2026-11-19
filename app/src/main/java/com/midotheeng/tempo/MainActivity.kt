@@ -180,22 +180,23 @@ private fun AddContact(state: AppState) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Add a contact", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Choose from your contacts, or type the name exactly as WhatsApp shows it. Chats you open in WhatsApp also appear below — open their chat, come back here, and tap their name.",
+                "Choose from your WhatsApp contacts, or type the name exactly as WhatsApp shows it. Chats you open in WhatsApp also appear below — open their chat, come back here, and tap their name.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickContact()) { uri ->
-                if (uri != null) {
-                    try {
-                        ctx.contentResolver.query(uri, arrayOf(ContactsContract.Contacts.DISPLAY_NAME), null, null, null)?.use { cur ->
-                            if (cur.moveToFirst()) cur.getString(0)?.let { add(it) }
-                        }
-                    } catch (_: Exception) {
-                    }
-                }
+            var showPicker by remember { mutableStateOf(false) }
+            val contactsPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+                if (ok) showPicker = true
             }
-            FilledTonalButton(onClick = { picker.launch(null) }, modifier = Modifier.fillMaxWidth()) {
-                Text("Choose from phone contacts")
+            FilledTonalButton(
+                onClick = {
+                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) showPicker = true
+                    else contactsPerm.launch(Manifest.permission.READ_CONTACTS)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Choose from WhatsApp contacts") }
+            if (showPicker) {
+                WhatsAppPicker(onPick = { showPicker = false; add(it) }, onClose = { showPicker = false })
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -308,4 +309,67 @@ private fun Stepper(label: String, onMinus: () -> Unit, onPlus: () -> Unit) {
         Spacer(Modifier.width(8.dp))
         OutlinedButton(onClick = onPlus, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(40.dp)) { Text("+") }
     }
+}
+
+/** Names of contacts that WhatsApp has linked in the phone's address book. */
+private fun loadWhatsAppContacts(ctx: Context): List<String> {
+    val ids = mutableSetOf<Long>()
+    ctx.contentResolver.query(
+        ContactsContract.RawContacts.CONTENT_URI,
+        arrayOf(ContactsContract.RawContacts.CONTACT_ID),
+        "${ContactsContract.RawContacts.ACCOUNT_TYPE} IN (?, ?) AND ${ContactsContract.RawContacts.DELETED} = 0",
+        arrayOf("com.whatsapp", "com.whatsapp.w4b"),
+        null
+    )?.use { c -> while (c.moveToNext()) ids += c.getLong(0) }
+    if (ids.isEmpty()) return emptyList()
+
+    val names = mutableSetOf<String>()
+    ids.chunked(400).forEach { chunk ->
+        ctx.contentResolver.query(
+            ContactsContract.Contacts.CONTENT_URI,
+            arrayOf(ContactsContract.Contacts.DISPLAY_NAME),
+            "${ContactsContract.Contacts._ID} IN (${chunk.joinToString(",")})",
+            null, null
+        )?.use { c -> while (c.moveToNext()) c.getString(0)?.let { if (it.isNotBlank()) names += it } }
+    }
+    return names.sortedBy { it.lowercase() }
+}
+
+@Composable
+private fun WhatsAppPicker(onPick: (String) -> Unit, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val all = remember { try { loadWhatsAppContacts(ctx) } catch (_: Exception) { emptyList() } }
+    var query by remember { mutableStateOf("") }
+    val shown = remember(query, all) {
+        if (query.isBlank()) all else all.filter { it.contains(query.trim(), ignoreCase = true) }
+    }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("WhatsApp contacts") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it },
+                    singleLine = true, label = { Text("Search") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                if (all.isEmpty()) {
+                    Text(
+                        "No WhatsApp contacts found. Open WhatsApp → Settings → Privacy → Contacts and make sure it can see your contacts, then try again. You can also open their chat in WhatsApp and come back — they'll appear as a suggestion.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                        items(shown) { name ->
+                            TextButton(onClick = { onPick(name) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(name, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } }
+    )
 }
