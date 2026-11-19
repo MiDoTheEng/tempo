@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.ContactsContract
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -179,10 +180,23 @@ private fun AddContact(state: AppState) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Add a contact", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Type the name exactly as it shows in WhatsApp, or tap someone who messaged you recently.",
+                "Choose from your contacts, or type the name exactly as WhatsApp shows it. Chats you open in WhatsApp also appear below — open their chat, come back here, and tap their name.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickContact()) { uri ->
+                if (uri != null) {
+                    try {
+                        ctx.contentResolver.query(uri, arrayOf(ContactsContract.Contacts.DISPLAY_NAME), null, null, null)?.use { cur ->
+                            if (cur.moveToFirst()) cur.getString(0)?.let { add(it) }
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            FilledTonalButton(onClick = { picker.launch(null) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Choose from phone contacts")
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = text, onValueChange = { text = it },

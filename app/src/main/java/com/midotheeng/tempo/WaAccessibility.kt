@@ -52,7 +52,15 @@ class WaAccessibility : AccessibilityService() {
             lastOpenChat = null
             return
         }
-        val contact = Store.find(this, chat) ?: return
+        if (lastOpenChat == null || nameKey(lastOpenChat!!) != nameKey(chat)) {
+            // Any chat you open becomes a one-tap suggestion in Tempo's "Add a contact".
+            Store.addRecent(this, chat)
+        }
+        val contact = Store.find(this, chat)
+        if (contact == null) {
+            lastOpenChat = chat
+            return
+        }
 
         if (lastOpenChat == null || nameKey(lastOpenChat!!) != nameKey(chat)) {
             lastOpenChat = chat
