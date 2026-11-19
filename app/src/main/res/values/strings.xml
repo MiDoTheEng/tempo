@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tempo</string>
+    <string name="a11y_label">Tempo – reply timer</string>
+    <string name="a11y_desc">Tempo watches WhatsApp only, to notice when you tap Send in a chat with a contact you picked, and when you open that chat. It uses this to measure how long they take to reply. Nothing leaves your phone.</string>
+</resources>
