@@ -5,43 +5,108 @@ import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import android.graphics.Bitmap
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import android.widget.Toast
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.Dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+
+// ---------- Look ----------
+
+private val Forest = Color(0xFF1F3B34)
+private val ForestLight = Color(0xFF2F5A4E)
+private val Amber = Color(0xFFE0A458)
+private val Sand = Color(0xFFF3E9D2)
+
+private val LightColors = lightColorScheme(
+    primary = Forest, onPrimary = Color.White,
+    primaryContainer = Color(0xFFD9E8E1), onPrimaryContainer = Forest,
+    secondary = Color(0xFFB4732A), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFF8E6CB), onSecondaryContainer = Color(0xFF5A3A10),
+    background = Color(0xFFF6F1E7), onBackground = Color(0xFF1B2421),
+    surface = Color(0xFFFFFCF6), onSurface = Color(0xFF1B2421),
+    surfaceVariant = Color(0xFFEDE6D8), onSurfaceVariant = Color(0xFF5E6662),
+    surfaceContainerLow = Color(0xFFFFFCF6), surfaceContainer = Color(0xFFFAF5EC),
+    surfaceContainerHigh = Color(0xFFF3EDE1), surfaceContainerHighest = Color(0xFFEDE6D8),
+    outline = Color(0xFFCFC6B4), outlineVariant = Color(0xFFE6DFD0),
+)
+
+private val DarkColors = darkColorScheme(
+    primary = Color(0xFF9CCFBE), onPrimary = Color(0xFF07201A),
+    primaryContainer = Color(0xFF24443B), onPrimaryContainer = Color(0xFFCDEBE0),
+    secondary = Amber, onSecondary = Color(0xFF2E1C04),
+    secondaryContainer = Color(0xFF4A3414), onSecondaryContainer = Color(0xFFF7DDB8),
+    background = Color(0xFF0F1715), onBackground = Color(0xFFE6E2D8),
+    surface = Color(0xFF16201D), onSurface = Color(0xFFE6E2D8),
+    surfaceVariant = Color(0xFF26312D), onSurfaceVariant = Color(0xFFA9B3AE),
+    surfaceContainerLow = Color(0xFF16201D), surfaceContainer = Color(0xFF1A2522),
+    surfaceContainerHigh = Color(0xFF212D29), surfaceContainerHighest = Color(0xFF28342F),
+    outline = Color(0xFF45524D), outlineVariant = Color(0xFF2C3733),
+)
+
+private fun tempoType(): Typography {
+    val t = Typography()
+    val serif = FontFamily.Serif
+    return t.copy(
+        displaySmall = t.displaySmall.copy(fontFamily = serif, fontWeight = FontWeight.SemiBold),
+        headlineMedium = t.headlineMedium.copy(fontFamily = serif, fontWeight = FontWeight.SemiBold),
+        headlineSmall = t.headlineSmall.copy(fontFamily = serif, fontWeight = FontWeight.SemiBold),
+        titleLarge = t.titleLarge.copy(fontFamily = serif, fontWeight = FontWeight.SemiBold),
+    )
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,17 +115,17 @@ class MainActivity : ComponentActivity() {
         Notifier.ensureChannel(this)
         Store.get(this)
         setContent {
-            val ctx = LocalContext.current
-            val dark = isSystemInDarkTheme()
-            val scheme = if (Build.VERSION.SDK_INT >= 31) {
-                if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-            } else if (dark) darkColorScheme() else lightColorScheme()
-            MaterialTheme(colorScheme = scheme) {
-                Surface(Modifier.fillMaxSize()) { Home() }
+            MaterialTheme(
+                colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+                typography = tempoType()
+            ) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { Home() }
             }
         }
     }
 }
+
+// ---------- Permissions ----------
 
 private fun listenerOn(ctx: Context) =
     NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName)
@@ -76,7 +141,19 @@ private fun notifOn(ctx: Context) = Build.VERSION.SDK_INT < 33 ||
 private fun exactOn(ctx: Context) = Build.VERSION.SDK_INT < 31 ||
     ctx.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
 
-@OptIn(ExperimentalLayoutApi::class)
+private fun contactsOn(ctx: Context) =
+    ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+
+private fun addContact(ctx: Context, name: String) {
+    val clean = cleanName(name)
+    if (clean.isBlank() || Store.find(ctx, clean) != null) return
+    Store.update(ctx) { it.copy(contacts = it.contacts + Contact(name = clean)) }
+    Store.log(ctx, "Now watching $clean")
+    fetchWhatsAppPhoto(ctx, clean)
+}
+
+// ---------- Home ----------
+
 @Composable
 private fun Home() {
     val ctx = LocalContext.current
@@ -86,220 +163,254 @@ private fun Home() {
         refresh++
         Engine.settle(ctx)
     }
-    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
-
-    // Read refresh so permission rows recompute on resume.
-    val perms = remember(refresh) {
-        listOf(listenerOn(ctx), accessibilityOn(ctx), notifOn(ctx), exactOn(ctx))
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(20_000)
+            value = System.currentTimeMillis()
+        }
     }
+    val perms = remember(refresh) { listOf(listenerOn(ctx), accessibilityOn(ctx), notifOn(ctx), exactOn(ctx)) }
     val allSet = perms.all { it }
-    var showSetup by remember { mutableStateOf(false) }
+    var showAdd by remember { mutableStateOf(false) }
+    var setupOpen by remember { mutableStateOf(false) }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize().statusBarsPadding(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        item { Hero(state, now) }
+
+        if (!allSet) {
+            item { SetupCard(perms, onChanged = { refresh++ }, collapsible = false, open = true, onToggle = {}) }
+        }
+
         item {
-            Text("Tempo", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("People", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                if (state.contacts.isNotEmpty()) {
+                    Button(onClick = { showAdd = true }, contentPadding = PaddingValues(horizontal = 16.dp)) {
+                        Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Add")
+                    }
+                }
+            }
+        }
+
+        if (state.contacts.isEmpty()) {
+            item { EmptyPeople(onAdd = { showAdd = true }) }
+        } else {
+            items(state.contacts, key = { nameKey(it.name) }) { c -> ContactCard(c, now) }
+        }
+
+        if (state.log.isNotEmpty()) item { ActivityCard(state.log) }
+
+        if (allSet) {
+            item { SetupCard(perms, onChanged = { refresh++ }, collapsible = true, open = setupOpen, onToggle = { setupOpen = !setupOpen }) }
+        }
+    }
+
+    if (showAdd) AddSheet(state, onDismiss = { showAdd = false })
+}
+
+@Composable
+private fun Hero(state: AppState, now: Long) {
+    val holding = state.contacts.sumOf { it.held.size }
+    val timing = state.contacts.count { it.mode == MODE_MIRROR && it.lastMySend > 0 }
+    val next = state.contacts.filter { it.held.isNotEmpty() }.minOfOrNull { it.releaseAt }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp))
+            .background(Brush.linearGradient(listOf(Forest, ForestLight)))
+    ) {
+        Image(
+            painterResource(R.drawable.ic_launcher_fg), null,
+            Modifier.size(190.dp).align(Alignment.TopEnd).offset(x = 52.dp, y = (-34).dp).alpha(0.16f)
+        )
+        Column(Modifier.padding(22.dp)) {
+            Text("Tempo", style = MaterialTheme.typography.displaySmall, color = Sand)
             Text(
-                "Holds WhatsApp notifications from people you pick — for as long as they made you wait.",
+                "Their pace, mirrored.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Sand.copy(alpha = 0.7f)
+            )
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Stat("${state.contacts.size}", "watching", Modifier.weight(1f))
+                Stat("$holding", "held", Modifier.weight(1f), highlight = holding > 0)
+                Stat("$timing", "timing", Modifier.weight(1f))
+            }
+            if (next != null) {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Next release in ${fmtDuration((next - now).coerceAtLeast(0))} · ${fmtTime(next)}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Amber
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Stat(value: String, label: String, modifier: Modifier, highlight: Boolean = false) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (highlight) Amber.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f))
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Text(value, style = MaterialTheme.typography.headlineSmall, color = if (highlight) Amber else Sand)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Sand.copy(alpha = 0.7f))
+    }
+}
+
+@Composable
+private fun EmptyPeople(onAdd: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier.size(84.dp).clip(CircleShape).background(Forest),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(painterResource(R.drawable.ic_launcher_fg), null, Modifier.size(120.dp))
+            }
+            Spacer(Modifier.height(16.dp))
+            Text("No one yet", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Pick someone whose replies you want to mirror.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (allSet) "Setup ✓" else "Setup — ${perms.count { !it }} step(s) left",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (allSet) TextButton(onClick = { showSetup = !showSetup }) {
-                            Text(if (showSetup) "Hide" else "Show")
-                        }
-                    }
-                    if (!allSet || showSetup) {
-                        SetupRow("1. Notification access", "Lets Tempo see and hide WhatsApp notifications.", perms[0]) {
-                            ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                        }
-                        SetupRow(
-                            "2. Accessibility",
-                            "Lets Tempo notice when you tap Send. If it's greyed out: Settings → Apps → Tempo → ⋮ → Allow restricted settings, then try again.",
-                            perms[1]
-                        ) { ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-                        SetupRow("3. Show notifications", "So Tempo can show the held messages.", perms[2]) {
-                            if (Build.VERSION.SDK_INT >= 33) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        }
-                        SetupRow("4. Alarms & reminders", "So held messages appear on time, not a few minutes late.", perms[3]) {
-                            if (Build.VERSION.SDK_INT >= 31) ctx.startActivity(
-                                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${ctx.packageName}"))
-                            )
-                        }
-                        Text(
-                            "5. In WhatsApp, open each picked contact → Notifications → Custom notifications: tone None, vibrate Off, high priority Off. Otherwise WhatsApp buzzes before Tempo can hide it — Tempo makes the sound instead.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            }
-        }
-
-        item { AddContact(state) }
-
-        items(state.contacts, key = { nameKey(it.name) }) { c -> ContactCard(c) }
-
-        if (state.log.isNotEmpty()) {
-            item {
-                Text("Activity", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
-            }
-            items(state.log) { line ->
-                Text(line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(18.dp))
+            Button(onClick = onAdd) {
+                Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Add someone")
             }
         }
     }
 }
 
-@Composable
-private fun SetupRow(title: String, sub: String, done: Boolean, onClick: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Spacer(Modifier.width(8.dp))
-        if (done) Text("✓", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-        else FilledTonalButton(onClick = onClick) { Text("Open") }
-    }
-}
+// ---------- Contact ----------
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddContact(state: AppState) {
+private fun ContactCard(c: Contact, now: Long) {
     val ctx = LocalContext.current
-    var text by remember { mutableStateOf("") }
-    fun add(name: String) {
-        val clean = cleanName(name)
-        if (clean.isBlank() || Store.find(ctx, clean) != null) return
-        Store.update(ctx) { it.copy(contacts = it.contacts + Contact(name = clean)) }
-        Store.log(ctx, "Now watching $clean")
-        text = ""
-        fetchWhatsAppPhoto(ctx, clean)
-    }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Add a contact", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Choose from your WhatsApp contacts, or type the name exactly as WhatsApp shows it. Chats you open in WhatsApp also appear below — open their chat, come back here, and tap their name.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            var showPicker by remember { mutableStateOf(false) }
-            val contactsPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-                if (ok) {
-                    Avatars.refresh()
-                    showPicker = true
-                }
-            }
-            FilledTonalButton(
-                onClick = {
-                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) showPicker = true
-                    else contactsPerm.launch(Manifest.permission.READ_CONTACTS)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Choose from WhatsApp contacts") }
-            if (showPicker) {
-                WhatsAppPicker(onPick = { showPicker = false; add(it) }, onClose = { showPicker = false })
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = text, onValueChange = { text = it },
-                    singleLine = true, label = { Text("Name") },
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = { add(text) }, enabled = text.isNotBlank()) { Text("Add") }
-            }
-            val suggestions = state.recent.filter { r -> state.contacts.none { nameKey(it.name) == nameKey(r) } }
-            if (suggestions.isNotEmpty()) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    suggestions.forEach { s ->
-                        AssistChip(onClick = { add(s) }, label = { Text(s) }, leadingIcon = { Avatar(s, 24.dp) })
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ContactCard(c: Contact) {
-    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    val holding = c.held.isNotEmpty() && c.releaseAt > 0
+    val timing = !holding && c.mode == MODE_MIRROR && c.lastMySend > 0
+    val ring by animateColorAsState(
+        when {
+            holding -> cs.secondary
+            timing -> cs.primary
+            else -> cs.outlineVariant
+        }, label = "ring"
+    )
+    var menu by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
-    ElevatedCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+    Card(
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = cs.surface),
+        border = BorderStroke(1.dp, cs.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.clickable { fetchWhatsAppPhoto(ctx, c.name) }) { Avatar(c.name, 52.dp) }
-                Spacer(Modifier.width(12.dp))
-                Text(c.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Box(
+                    Modifier
+                        .size(64.dp)
+                        .border(2.5.dp, ring, CircleShape)
+                        .padding(5.dp)
+                        .clip(CircleShape)
+                        .clickable { fetchWhatsAppPhoto(ctx, c.name) }
+                ) { Avatar(c.name, 54.dp) }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(c.name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(4.dp))
+                    val (label, bg, fg) = when {
+                        holding -> Triple("Holding ${c.held.size}", cs.secondaryContainer, cs.onSecondaryContainer)
+                        timing -> Triple("Timing their reply", cs.primaryContainer, cs.onPrimaryContainer)
+                        else -> Triple("Idle", cs.surfaceVariant, cs.onSurfaceVariant)
+                    }
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = fg,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(bg).padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Refresh photo") }, onClick = { menu = false; fetchWhatsAppPhoto(ctx, c.name) })
+                        if (c.mode == MODE_MIRROR) DropdownMenuItem(
+                            text = { Text("I just messaged them") },
+                            onClick = { menu = false; Engine.onMySend(ctx, c.name, System.currentTimeMillis(), "marked by hand") }
+                        )
+                        DropdownMenuItem(text = { Text("Remove", color = cs.error) }, onClick = { menu = false; confirmRemove = true })
+                    }
+                }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+            if (holding) {
+                Spacer(Modifier.height(16.dp))
+                HoldPanel(c, now)
+            } else if (timing) {
+                Spacer(Modifier.height(16.dp))
+                TimingPanel(c, now)
+            }
+
+            Spacer(Modifier.height(16.dp))
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                SegmentedButton(
                     selected = c.mode == MODE_MIRROR,
                     onClick = { Store.updateContact(ctx, c.name) { it.copy(mode = MODE_MIRROR) } },
-                    label = { Text("Match their time") }
-                )
-                FilterChip(
+                    shape = SegmentedButtonDefaults.itemShape(0, 2)
+                ) { Text("Match their time") }
+                SegmentedButton(
                     selected = c.mode == MODE_FIXED,
                     onClick = { Store.updateContact(ctx, c.name) { it.copy(mode = MODE_FIXED) } },
-                    label = { Text("Fixed delay") }
-                )
+                    shape = SegmentedButtonDefaults.itemShape(1, 2)
+                ) { Text("Fixed delay") }
             }
-
+            Spacer(Modifier.height(12.dp))
             if (c.mode == MODE_MIRROR) {
-                Stepper(
-                    label = "Never hold longer than ${fmtDuration(c.capMinutes * 60_000L)}",
+                ValueStepper(
+                    label = "Longest hold",
+                    value = fmtDuration(c.capMinutes * 60_000L),
                     onMinus = { Store.updateContact(ctx, c.name) { it.copy(capMinutes = (it.capMinutes - 60).coerceAtLeast(60)) } },
                     onPlus = { Store.updateContact(ctx, c.name) { it.copy(capMinutes = (it.capMinutes + 60).coerceAtMost(72 * 60)) } }
                 )
             } else {
-                Stepper(
-                    label = "Hold for ${fmtDuration(c.fixedMinutes * 60_000L)}",
+                ValueStepper(
+                    label = "Hold for",
+                    value = fmtDuration(c.fixedMinutes * 60_000L),
                     onMinus = { Store.updateContact(ctx, c.name) { it.copy(fixedMinutes = (it.fixedMinutes - 15).coerceAtLeast(15)) } },
                     onPlus = { Store.updateContact(ctx, c.name) { it.copy(fixedMinutes = (it.fixedMinutes + 15).coerceAtMost(72 * 60)) } }
                 )
             }
-
-            val status = when {
-                c.held.isNotEmpty() && c.releaseAt > 0 ->
-                    "Holding ${c.held.size} message(s) until ${fmtTime(c.releaseAt)}"
-                c.mode == MODE_MIRROR && c.lastMySend > 0 ->
-                    "You messaged at ${fmtTime(c.lastMySend)} — timing their reply"
-                else -> "Nothing held"
-            }
-            Text(status, style = MaterialTheme.typography.bodyMedium)
             if (c.lastWaitMs > 0) {
+                Spacer(Modifier.height(10.dp))
                 Text(
                     "Their last reply took ${fmtDuration(c.lastWaitMs)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = cs.onSurfaceVariant
                 )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (c.held.isNotEmpty()) {
-                    FilledTonalButton(onClick = { Engine.releaseNow(ctx, c.name) }) { Text("Show now") }
-                } else if (c.mode == MODE_MIRROR) {
-                    OutlinedButton(onClick = {
-                        Engine.onMySend(ctx, c.name, System.currentTimeMillis(), "marked by hand")
-                    }) { Text("I just messaged them") }
-                }
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = { confirmRemove = true }) { Text("Remove") }
             }
         }
     }
@@ -324,13 +435,351 @@ private fun ContactCard(c: Contact) {
 }
 
 @Composable
-private fun Stepper(label: String, onMinus: () -> Unit, onPlus: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        OutlinedButton(onClick = onMinus, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(40.dp)) { Text("−") }
-        Spacer(Modifier.width(8.dp))
-        OutlinedButton(onClick = onPlus, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(40.dp)) { Text("+") }
+private fun HoldPanel(c: Contact, now: Long) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    val start = c.held.first().time
+    val total = (c.releaseAt - start).coerceAtLeast(1)
+    val progress = ((now - start).toFloat() / total).coerceIn(0f, 1f)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.secondaryContainer).padding(16.dp)
+    ) {
+        Text(
+            "${c.held.size} message${if (c.held.size == 1) "" else "s"} waiting",
+            style = MaterialTheme.typography.labelLarge,
+            color = cs.onSecondaryContainer.copy(alpha = 0.8f)
+        )
+        Spacer(Modifier.height(2.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                "Shows in ${fmtDuration((c.releaseAt - now).coerceAtLeast(0))}",
+                style = MaterialTheme.typography.headlineSmall,
+                color = cs.onSecondaryContainer,
+                modifier = Modifier.weight(1f)
+            )
+            Text(fmtTime(c.releaseAt), style = MaterialTheme.typography.labelLarge, color = cs.onSecondaryContainer)
+        }
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
+            color = cs.secondary,
+            trackColor = cs.onSecondaryContainer.copy(alpha = 0.12f),
+            drawStopIndicator = {}
+        )
+        Spacer(Modifier.height(12.dp))
+        FilledTonalButton(
+            onClick = { Engine.releaseNow(ctx, c.name) },
+            colors = ButtonDefaults.filledTonalButtonColors(containerColor = cs.secondary, contentColor = cs.onSecondary)
+        ) { Text("Show now") }
     }
+}
+
+@Composable
+private fun TimingPanel(c: Contact, now: Long) {
+    val cs = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.primaryContainer).padding(16.dp)
+    ) {
+        Text(
+            "You messaged at ${fmtTime(c.lastMySend)}",
+            style = MaterialTheme.typography.labelLarge,
+            color = cs.onPrimaryContainer.copy(alpha = 0.8f)
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "Waiting ${fmtDuration((now - c.lastMySend).coerceAtLeast(0))}",
+            style = MaterialTheme.typography.headlineSmall,
+            color = cs.onPrimaryContainer
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Their reply will be held this long.",
+            style = MaterialTheme.typography.bodySmall,
+            color = cs.onPrimaryContainer.copy(alpha = 0.75f)
+        )
+    }
+}
+
+@Composable
+private fun ValueStepper(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh).padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        }
+        RoundIcon("−", onMinus)
+        Spacer(Modifier.width(6.dp))
+        RoundIcon("+", onPlus)
+    }
+}
+
+@Composable
+private fun RoundIcon(symbol: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Text(symbol, fontSize = 20.sp, color = MaterialTheme.colorScheme.primary) }
+}
+
+// ---------- Setup ----------
+
+@Composable
+private fun SetupCard(perms: List<Boolean>, onChanged: () -> Unit, collapsible: Boolean, open: Boolean, onToggle: () -> Unit) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    val done = perms.count { it }
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { onChanged() }
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = cs.surface),
+        border = BorderStroke(1.dp, cs.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Row(
+                Modifier.fillMaxWidth().then(if (collapsible) Modifier.clickable(onClick = onToggle) else Modifier),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (collapsible) "Setup & tips" else "Finish setup", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        if (done == perms.size) "Everything is allowed" else "$done of ${perms.size} done",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSurfaceVariant
+                    )
+                }
+                if (collapsible) Icon(if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null)
+            }
+            if (!collapsible) {
+                Spacer(Modifier.height(12.dp))
+                LinearProgressIndicator(
+                    progress = { done / perms.size.toFloat() },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
+                    drawStopIndicator = {}
+                )
+            }
+            AnimatedVisibility(open) {
+                Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    SetupStep(1, "Notification access", "See and hide WhatsApp notifications.", perms[0]) {
+                        ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                    }
+                    SetupStep(
+                        2, "Accessibility",
+                        "Notice when you tap Send. Greyed out? Settings → Apps → Tempo → ⋮ → Allow restricted settings.",
+                        perms[1]
+                    ) { ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                    SetupStep(3, "Notifications", "Show the held messages when it's time.", perms[2]) {
+                        if (Build.VERSION.SDK_INT >= 33) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    SetupStep(4, "Alarms & reminders", "Release messages on the minute.", perms[3]) {
+                        if (Build.VERSION.SDK_INT >= 31) ctx.startActivity(
+                            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${ctx.packageName}"))
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.secondaryContainer.copy(alpha = 0.6f))
+                    ) {
+                        Box(Modifier.width(4.dp).height(96.dp).background(cs.secondary))
+                        Text(
+                            "In WhatsApp, open each person → Notifications → Custom notifications: tone None, vibrate Off, high priority Off. Tempo makes the sound instead.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = cs.onSecondaryContainer,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupStep(n: Int, title: String, sub: String, done: Boolean, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.size(32.dp).clip(CircleShape).background(if (done) cs.primary else cs.surfaceContainerHighest),
+            contentAlignment = Alignment.Center
+        ) {
+            if (done) Icon(Icons.Filled.Check, null, tint = cs.onPrimary, modifier = Modifier.size(18.dp))
+            else Text("$n", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(sub, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+        }
+        if (!done) {
+            Spacer(Modifier.width(8.dp))
+            FilledTonalButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Allow") }
+        }
+    }
+}
+
+// ---------- Activity ----------
+
+@Composable
+private fun ActivityCard(log: List<String>) {
+    val cs = MaterialTheme.colorScheme
+    var all by remember { mutableStateOf(false) }
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = cs.surface),
+        border = BorderStroke(1.dp, cs.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Text("Activity", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(12.dp))
+            val lines = if (all) log else log.take(5)
+            lines.forEachIndexed { i, line ->
+                val time = line.substringBefore("  ", "")
+                val text = line.substringAfter("  ", line)
+                Row {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(14.dp)) {
+                        Spacer(Modifier.height(6.dp))
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(if (i == 0) cs.secondary else cs.outline))
+                        if (i < lines.lastIndex) Box(Modifier.width(1.5.dp).height(34.dp).background(cs.outlineVariant))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.padding(bottom = 10.dp)) {
+                        Text(text, style = MaterialTheme.typography.bodyMedium)
+                        if (time.isNotEmpty()) Text(time, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+                    }
+                }
+            }
+            if (log.size > 5) {
+                TextButton(onClick = { all = !all }) { Text(if (all) "Show less" else "Show all ${log.size}") }
+            }
+        }
+    }
+}
+
+// ---------- Add sheet ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddSheet(state: AppState, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var permTick by remember { mutableIntStateOf(0) }
+    val hasPerm = remember(permTick) { contactsOn(ctx) }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        Avatars.refresh()
+        permTick++
+    }
+    val all = remember(hasPerm) { if (hasPerm) try { loadWhatsAppContacts(ctx) } catch (_: Exception) { emptyList() } else emptyList() }
+    var query by remember { mutableStateOf("") }
+    val watched = state.contacts.map { nameKey(it.name) }.toSet()
+    val q = query.trim()
+    val list = all.filter { nameKey(it) !in watched && (q.isEmpty() || it.contains(q, ignoreCase = true)) }
+    val recent = state.recent.filter { nameKey(it) !in watched && (q.isEmpty() || it.contains(q, ignoreCase = true)) }
+    fun pick(name: String) {
+        addContact(ctx, name)
+        onDismiss()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = cs.surface
+    ) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            Text("Add someone", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(14.dp))
+            OutlinedTextField(
+                value = query, onValueChange = { query = it },
+                singleLine = true,
+                placeholder = { Text("Search or type a name") },
+                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (recent.isNotEmpty()) {
+                SectionLabel("Recent chats")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(recent) { s ->
+                        Column(
+                            Modifier.width(66.dp).clip(RoundedCornerShape(12.dp)).clickable { pick(s) }.padding(vertical = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Avatar(s, 54.dp)
+                            Spacer(Modifier.height(6.dp))
+                            Text(s, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+
+            SectionLabel("WhatsApp contacts")
+            if (!hasPerm) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(cs.surfaceContainerHigh).padding(18.dp)
+                ) {
+                    Text("See your WhatsApp contacts here", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Tempo only reads names and photos, on your phone.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(onClick = { permLauncher.launch(Manifest.permission.READ_CONTACTS) }) { Text("Allow contacts") }
+                }
+            }
+            LazyColumn(Modifier.heightIn(max = 460.dp)) {
+                if (q.isNotEmpty() && all.none { it.equals(q, ignoreCase = true) } && nameKey(q) !in watched) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text("Add “$q”") },
+                            supportingContent = { Text("Exactly as WhatsApp shows it") },
+                            leadingContent = {
+                                Box(Modifier.size(42.dp).clip(CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Filled.Add, null, tint = cs.onPrimaryContainer)
+                                }
+                            },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { pick(q) }
+                        )
+                    }
+                }
+                items(list) { name ->
+                    ListItem(
+                        headlineContent = { Text(name) },
+                        leadingContent = { Avatar(name, 42.dp) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { pick(name) }
+                    )
+                }
+                if (hasPerm && all.isEmpty()) {
+                    item {
+                        Text(
+                            "No WhatsApp contacts found. Open their chat in WhatsApp and come back — they'll show under Recent chats.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = cs.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        letterSpacing = 1.2.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 18.dp, bottom = 10.dp)
+    )
 }
 
 /** Names of contacts that WhatsApp has linked in the phone's address book. */
@@ -355,47 +804,6 @@ private fun loadWhatsAppContacts(ctx: Context): List<String> {
         )?.use { c -> while (c.moveToNext()) c.getString(0)?.let { if (it.isNotBlank()) names += it } }
     }
     return names.sortedBy { it.lowercase() }
-}
-
-@Composable
-private fun WhatsAppPicker(onPick: (String) -> Unit, onClose: () -> Unit) {
-    val ctx = LocalContext.current
-    val all = remember { try { loadWhatsAppContacts(ctx) } catch (_: Exception) { emptyList() } }
-    var query by remember { mutableStateOf("") }
-    val shown = remember(query, all) {
-        if (query.isBlank()) all else all.filter { it.contains(query.trim(), ignoreCase = true) }
-    }
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text("WhatsApp contacts") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = query, onValueChange = { query = it },
-                    singleLine = true, label = { Text("Search") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                if (all.isEmpty()) {
-                    Text(
-                        "No WhatsApp contacts found. Open WhatsApp → Settings → Privacy → Contacts and make sure it can see your contacts, then try again. You can also open their chat in WhatsApp and come back — they'll appear as a suggestion.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                } else {
-                    LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                        items(shown) { name ->
-                            TextButton(onClick = { onPick(name) }, modifier = Modifier.fillMaxWidth()) {
-                                Avatar(name, 36.dp)
-                                Spacer(Modifier.width(12.dp))
-                                Text(name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onClose) { Text("Close") } }
-    )
 }
 
 @Composable
