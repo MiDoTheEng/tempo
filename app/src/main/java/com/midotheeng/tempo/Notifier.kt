@@ -13,6 +13,13 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import androidx.core.graphics.drawable.IconCompat
 import androidx.core.content.ContextCompat
 import java.util.concurrent.ConcurrentHashMap
@@ -49,7 +56,7 @@ object Notifier {
         val me = Person.Builder().setName("You").build()
         val photo = try { Avatars.load(ctx, c.name) } catch (_: Exception) { null }
         val them = Person.Builder().setName(c.name)
-            .apply { photo?.let { setIcon(IconCompat.createWithBitmap(it)) } }
+            .apply { photo?.let { setIcon(IconCompat.createWithBitmap(circle(it))) } }
             .build()
         val style = NotificationCompat.MessagingStyle(me)
         c.shown.forEach { style.addMessage(it.text, it.time, them) }
@@ -69,7 +76,23 @@ object Notifier {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        // Register the person as a conversation so Android shows their photo, like WhatsApp does.
+        val shortcutId = "chat_" + id(c.name)
+        try {
+            val icon = photo?.let { IconCompat.createWithBitmap(circle(it)) }
+            val shortcut = ShortcutInfoCompat.Builder(ctx, shortcutId)
+                .setShortLabel(c.name)
+                .setLongLived(true)
+                .setPerson(them)
+                .setIntent(Intent(ctx, MainActivity::class.java).setAction(Intent.ACTION_VIEW))
+                .apply { icon?.let { setIcon(it) } }
+                .build()
+            ShortcutManagerCompat.pushDynamicShortcut(ctx, shortcut)
+        } catch (_: Exception) {
+        }
+
         val b = NotificationCompat.Builder(ctx, CHANNEL)
+            .setShortcutId(shortcutId)
             .setSmallIcon(R.drawable.ic_notif)
             .setStyle(style)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
@@ -86,6 +109,17 @@ object Notifier {
             NotificationManagerCompat.from(ctx).notify(id(c.name), b.build())
         } catch (_: SecurityException) {
         }
+    }
+
+    private fun circle(src: Bitmap): Bitmap {
+        val size = minOf(src.width, src.height)
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+        canvas.drawBitmap(src, ((size - src.width) / 2f), ((size - src.height) / 2f), paint)
+        return out
     }
 
     fun cancel(ctx: Context, name: String) {
