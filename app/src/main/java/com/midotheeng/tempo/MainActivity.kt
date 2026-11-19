@@ -216,9 +216,9 @@ private fun Home() {
 
 @Composable
 private fun Hero(state: AppState, now: Long) {
-    val holding = state.contacts.sumOf { it.held.size }
-    val timing = state.contacts.count { it.mode == MODE_MIRROR && it.lastMySend > 0 }
-    val next = state.contacts.filter { it.held.isNotEmpty() }.minOfOrNull { it.releaseAt }
+    val held = state.contacts.filter { it.held.isNotEmpty() && it.releaseAt > 0 }
+    val timing = state.contacts.filter { it.mode == MODE_MIRROR && it.lastMySend > 0 && it.held.isEmpty() }
+    val mint = Color(0xFF9CCFBE)
     Box(
         Modifier
             .fillMaxWidth()
@@ -229,41 +229,99 @@ private fun Hero(state: AppState, now: Long) {
             painterResource(R.drawable.ic_launcher_fg), null,
             Modifier.size(190.dp).align(Alignment.TopEnd).offset(x = 52.dp, y = (-34).dp).alpha(0.16f)
         )
-        Column(Modifier.padding(22.dp)) {
-            Text("Tempo", style = MaterialTheme.typography.displaySmall, color = Sand)
-            Text(
-                "Their pace, mirrored.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Sand.copy(alpha = 0.7f)
-            )
-            Spacer(Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Stat("${state.contacts.size}", "watching", Modifier.weight(1f))
-                Stat("$holding", "held", Modifier.weight(1f), highlight = holding > 0)
-                Stat("$timing", "timing", Modifier.weight(1f))
+        Column(Modifier.padding(vertical = 22.dp)) {
+            Column(Modifier.padding(horizontal = 22.dp)) {
+                Text("Tempo", style = MaterialTheme.typography.displaySmall, color = Sand)
+                Text("Their pace, mirrored.", style = MaterialTheme.typography.bodyMedium, color = Sand.copy(alpha = 0.7f))
             }
-            if (next != null) {
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    "Next release in ${fmtDuration((next - now).coerceAtLeast(0))} · ${fmtTime(next)}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Amber
+            Spacer(Modifier.height(20.dp))
+            PeopleRow(
+                "Watching",
+                state.contacts.map { c ->
+                    Bubble(
+                        c.name, null,
+                        when {
+                            c.held.isNotEmpty() -> Amber
+                            c.mode == MODE_MIRROR && c.lastMySend > 0 -> mint
+                            else -> Sand.copy(alpha = 0.35f)
+                        }
+                    )
+                },
+                empty = "No one yet — add someone below"
+            )
+            Spacer(Modifier.height(18.dp))
+            PeopleRow(
+                "Timing",
+                timing.map { Bubble(it.name, shortDur(now - it.lastMySend), mint) },
+                empty = "No replies being timed"
+            )
+            if (held.isNotEmpty()) {
+                Spacer(Modifier.height(18.dp))
+                PeopleRow(
+                    "Held",
+                    held.map { Bubble(it.name, shortDur(it.releaseAt - now) + " left", Amber) },
+                    empty = ""
                 )
             }
         }
     }
 }
 
+private data class Bubble(val name: String, val caption: String?, val ring: Color)
+
+private fun shortDur(ms: Long): String {
+    val m = (ms.coerceAtLeast(0) / 60_000)
+    return when {
+        m < 1 -> "<1m"
+        m < 60 -> "${m}m"
+        m % 60 == 0L -> "${m / 60}h"
+        else -> "${m / 60}h ${m % 60}m"
+    }
+}
+
 @Composable
-private fun Stat(value: String, label: String, modifier: Modifier, highlight: Boolean = false) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(if (highlight) Amber.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f))
-            .padding(horizontal = 14.dp, vertical = 12.dp)
-    ) {
-        Text(value, style = MaterialTheme.typography.headlineSmall, color = if (highlight) Amber else Sand)
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Sand.copy(alpha = 0.7f))
+private fun PeopleRow(label: String, people: List<Bubble>, empty: String) {
+    Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label.uppercase(), style = MaterialTheme.typography.labelMedium, letterSpacing = 1.2.sp, color = Sand.copy(alpha = 0.7f))
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier.size(22.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) { Text("${people.size}", style = MaterialTheme.typography.labelSmall, color = Sand) }
+    }
+    Spacer(Modifier.height(10.dp))
+    if (people.isEmpty()) {
+        Text(
+            empty,
+            style = MaterialTheme.typography.bodySmall,
+            color = Sand.copy(alpha = 0.5f),
+            modifier = Modifier.padding(horizontal = 22.dp)
+        )
+    } else {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 22.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            items(people, key = { nameKey(it.name) }) { p ->
+                Column(Modifier.width(62.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier.size(58.dp).border(2.5.dp, p.ring, CircleShape).padding(4.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Avatar(p.name, 50.dp) }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        p.name.substringBefore(' '),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Sand,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    p.caption?.let {
+                        Text(it, style = MaterialTheme.typography.labelSmall, color = p.ring, maxLines = 1)
+                    }
+                }
+            }
+        }
     }
 }
 
