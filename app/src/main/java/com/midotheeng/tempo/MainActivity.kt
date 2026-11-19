@@ -15,7 +15,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -186,7 +196,10 @@ private fun AddContact(state: AppState) {
             )
             var showPicker by remember { mutableStateOf(false) }
             val contactsPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-                if (ok) showPicker = true
+                if (ok) {
+                    Avatars.refresh()
+                    showPicker = true
+                }
             }
             FilledTonalButton(
                 onClick = {
@@ -210,7 +223,9 @@ private fun AddContact(state: AppState) {
             val suggestions = state.recent.filter { r -> state.contacts.none { nameKey(it.name) == nameKey(r) } }
             if (suggestions.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    suggestions.forEach { s -> AssistChip(onClick = { add(s) }, label = { Text(s) }) }
+                    suggestions.forEach { s ->
+                        AssistChip(onClick = { add(s) }, label = { Text(s) }, leadingIcon = { Avatar(s, 24.dp) })
+                    }
                 }
             }
         }
@@ -223,7 +238,11 @@ private fun ContactCard(c: Contact) {
     var confirmRemove by remember { mutableStateOf(false) }
     ElevatedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(c.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(c.name, 52.dp)
+                Spacer(Modifier.width(12.dp))
+                Text(c.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
@@ -363,7 +382,9 @@ private fun WhatsAppPicker(onPick: (String) -> Unit, onClose: () -> Unit) {
                     LazyColumn(Modifier.heightIn(max = 420.dp)) {
                         items(shown) { name ->
                             TextButton(onClick = { onPick(name) }, modifier = Modifier.fillMaxWidth()) {
-                                Text(name, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyLarge)
+                                Avatar(name, 36.dp)
+                                Spacer(Modifier.width(12.dp))
+                                Text(name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                             }
                         }
                     }
@@ -372,4 +393,30 @@ private fun WhatsAppPicker(onPick: (String) -> Unit, onClose: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onClose) { Text("Close") } }
     )
+}
+
+@Composable
+private fun Avatar(name: String, size: Dp) {
+    val ctx = LocalContext.current
+    val ver by Avatars.version.collectAsState()
+    val bmp by produceState<Bitmap?>(initialValue = null, name, ver) {
+        value = withContext(Dispatchers.IO) {
+            try { Avatars.load(ctx, name) } catch (_: Exception) { null }
+        }
+    }
+    Box(
+        Modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center
+    ) {
+        val b = bmp
+        if (b != null) {
+            Image(b.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Text(
+                cleanName(name).firstOrNull()?.uppercase() ?: "?",
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                style = if (size > 40.dp) MaterialTheme.typography.titleLarge else MaterialTheme.typography.labelMedium
+            )
+        }
+    }
 }

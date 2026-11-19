@@ -46,6 +46,12 @@ class WaListener : NotificationListenerService() {
         if (name.isBlank() || name.equals("WhatsApp", ignoreCase = true) || name.equals("WhatsApp Business", ignoreCase = true)) return
 
         Store.addRecent(this, name)
+        try {
+            val photo = n.getLargeIcon()?.loadDrawable(this)
+                ?: style?.messages?.lastOrNull { it.person?.icon != null }?.person?.icon?.loadDrawable(this)
+            Avatars.saveFromWhatsApp(this, name, photo)
+        } catch (_: Exception) {
+        }
         val contact = Store.find(this, name) ?: return
         val key = nameKey(contact.name)
 

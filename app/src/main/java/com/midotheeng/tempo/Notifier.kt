@@ -13,6 +13,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
+import androidx.core.graphics.drawable.IconCompat
 import androidx.core.content.ContextCompat
 import java.util.concurrent.ConcurrentHashMap
 
@@ -46,7 +47,10 @@ object Notifier {
         val key = nameKey(c.name)
 
         val me = Person.Builder().setName("You").build()
-        val them = Person.Builder().setName(c.name).build()
+        val photo = try { Avatars.load(ctx, c.name) } catch (_: Exception) { null }
+        val them = Person.Builder().setName(c.name)
+            .apply { photo?.let { setIcon(IconCompat.createWithBitmap(it)) } }
+            .build()
         val style = NotificationCompat.MessagingStyle(me)
         c.shown.forEach { style.addMessage(it.text, it.time, them) }
 
@@ -75,6 +79,7 @@ object Notifier {
             .setShowWhen(true)
             .setDeleteIntent(dismiss)
         open?.let { b.setContentIntent(it) }
+        photo?.let { b.setLargeIcon(it) }
         replyActions[key]?.let { b.addAction(it) }
 
         try {
