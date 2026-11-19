@@ -18,6 +18,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import android.widget.Toast
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
@@ -185,6 +187,7 @@ private fun AddContact(state: AppState) {
         Store.update(ctx) { it.copy(contacts = it.contacts + Contact(name = clean)) }
         Store.log(ctx, "Now watching $clean")
         text = ""
+        fetchWhatsAppPhoto(ctx, clean)
     }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -239,7 +242,7 @@ private fun ContactCard(c: Contact) {
     ElevatedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(c.name, 52.dp)
+                Box(Modifier.clickable { fetchWhatsAppPhoto(ctx, c.name) }) { Avatar(c.name, 52.dp) }
                 Spacer(Modifier.width(12.dp))
                 Text(c.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             }
@@ -418,5 +421,37 @@ private fun Avatar(name: String, size: Dp) {
                 style = if (size > 40.dp) MaterialTheme.typography.titleLarge else MaterialTheme.typography.labelMedium
             )
         }
+    }
+}
+
+/**
+ * Opens the contact's WhatsApp chat for a moment so the accessibility service can copy the
+ * profile photo from the chat header, then comes back to Tempo.
+ */
+private fun fetchWhatsAppPhoto(ctx: Context, name: String) {
+    if (Build.VERSION.SDK_INT < 30) return
+    if (!accessibilityOn(ctx)) {
+        Toast.makeText(ctx, "Turn on Accessibility for Tempo to get the WhatsApp photo", Toast.LENGTH_LONG).show()
+        return
+    }
+    val number = Avatars.whatsAppNumber(ctx, name)
+    if (number == null) {
+        Toast.makeText(ctx, "Couldn't find $name's number — open their chat in WhatsApp once and the photo will be grabbed", Toast.LENGTH_LONG).show()
+        Avatars.pendingCapture = name to (System.currentTimeMillis() + 60_000)
+        return
+    }
+    val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull {
+        ctx.packageManager.getLaunchIntentForPackage(it) != null
+    } ?: return
+    Avatars.pendingCapture = name to (System.currentTimeMillis() + 15_000)
+    try {
+        ctx.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$number"))
+                .setPackage(pkg)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        Toast.makeText(ctx, "Getting $name's photo…", Toast.LENGTH_SHORT).show()
+    } catch (_: Exception) {
+        Avatars.pendingCapture = null
     }
 }

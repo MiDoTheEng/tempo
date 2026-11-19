@@ -29,6 +29,58 @@ object Avatars {
     private val cache = LruCache<String, Bitmap>(80)
     private val missing = mutableSetOf<String>()
 
+    /** Set when Tempo opens a chat just to grab the photo: (name, deadline). */
+    @Volatile var pendingCapture: Pair<String, Long>? = null
+
+    fun saveBitmap(ctx: Context, name: String, bmp: Bitmap) {
+        val scaled = Bitmap.createScaledBitmap(bmp, SIZE, SIZE, true)
+        try {
+            file(ctx, name).outputStream().use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            cache.put(nameKey(name), scaled)
+            synchronized(missing) { missing.remove(nameKey(name)) }
+            version.value++
+        } catch (_: Exception) {
+        }
+    }
+
+    fun hasWhatsAppPhoto(ctx: Context, name: String) = file(ctx, name).exists()
+
+    /** International number WhatsApp uses for this contact (digits only), or null. */
+    fun whatsAppNumber(ctx: Context, name: String): String? {
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return null
+        return try {
+            // WhatsApp's own rows hold its id, e.g. "971501234567@s.whatsapp.net".
+            ctx.contentResolver.query(
+                ContactsContract.Data.CONTENT_URI,
+                arrayOf(ContactsContract.Data.DATA1),
+                "${ContactsContract.Data.DISPLAY_NAME} = ? AND ${ContactsContract.Data.MIMETYPE} IN (?, ?)",
+                arrayOf(cleanName(name), "vnd.android.cursor.item/vnd.com.whatsapp.profile", "vnd.android.cursor.item/vnd.com.whatsapp.w4b.profile"),
+                null
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val jid = c.getString(0) ?: continue
+                    val digits = jid.substringBefore('@').filter { it.isDigit() }
+                    if (digits.length >= 8) return digits
+                }
+                null
+            } ?: ctx.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
+                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} = ?",
+                arrayOf(cleanName(name)), null
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val n = c.getString(0)?.replace(" ", "")?.replace("-", "") ?: continue
+                    if (n.startsWith("+")) return n.filter { it.isDigit() }
+                    if (n.startsWith("00")) return n.drop(2).filter { it.isDigit() }
+                }
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     /** Forget "no photo" results (e.g. after contacts permission is granted) and reload. */
     fun refresh() {
         synchronized(missing) { missing.clear() }
