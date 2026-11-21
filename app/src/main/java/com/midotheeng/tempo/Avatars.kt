@@ -76,14 +76,14 @@ object Avatars {
                 null
             } ?: ctx.contentResolver.query(
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
+                arrayOf(ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER, ContactsContract.CommonDataKinds.Phone.NUMBER),
                 "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} = ?",
                 arrayOf(cleanName(name)), null
             )?.use { c ->
                 while (c.moveToNext()) {
-                    val n = c.getString(0)?.replace(" ", "")?.replace("-", "") ?: continue
-                    if (n.startsWith("+")) return n.filter { it.isDigit() }
-                    if (n.startsWith("00")) return n.drop(2).filter { it.isDigit() }
+                    // The phone already stores most numbers in +971… form; otherwise convert 050… ourselves.
+                    val n = c.getString(0)?.takeIf { it.isNotBlank() } ?: c.getString(1) ?: continue
+                    normalizeNumber(ctx, n)?.let { return it }
                 }
                 null
             }

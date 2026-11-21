@@ -255,8 +255,26 @@ fun sameNumber(a: String, b: String): Boolean {
 /** Pulls a phone number out of WhatsApp ids like "971501234567@s.whatsapp.net" or "tel:+971...". */
 fun numberFromWhatsAppId(id: String?): String? {
     if (id.isNullOrBlank()) return null
-    if (id.contains("@g.us")) return null
+    // Groups and WhatsApp's newer private ids ("…@lid") aren't phone numbers.
+    if (id.contains("@g.us") || id.contains("@lid") || id.contains("@newsletter") || id.contains("@broadcast")) return null
     val core = if (id.contains('@')) id.substringBefore('@') else id.removePrefix("tel:")
     val d = core.filter { it.isDigit() }
     return d.takeIf { it.length >= 8 }
+}
+
+/**
+ * Turns any way of writing a number into international digits (e.g. "050 123 4567" -> "971501234567"),
+ * using the phone's country for local numbers. Returns null if it doesn't look like a number.
+ */
+fun normalizeNumber(ctx: Context, raw: String): String? {
+    val t = raw.trim().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if (t.count { it.isDigit() } < 7) return null
+    if (t.startsWith("+")) return t.filter { it.isDigit() }
+    if (t.startsWith("00")) return t.drop(2).filter { it.isDigit() }
+    val tm = ctx.getSystemService(android.telephony.TelephonyManager::class.java)
+    val iso = (tm?.networkCountryIso?.takeIf { it.isNotBlank() } ?: tm?.simCountryIso?.takeIf { it.isNotBlank() } ?: "ae").uppercase()
+    val e164 = try { android.telephony.PhoneNumberUtils.formatNumberToE164(t, iso) } catch (_: Exception) { null }
+    if (e164 != null) return e164.filter { it.isDigit() }
+    // Already international without "+" (e.g. 9715…)?
+    return t.filter { it.isDigit() }.takeIf { !t.startsWith("0") && it.length >= 10 }
 }

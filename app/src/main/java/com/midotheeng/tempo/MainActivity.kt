@@ -388,6 +388,7 @@ private fun ContactCard(c: Contact, now: Long) {
     )
     var menu by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
+    var editNumber by remember { mutableStateOf(false) }
 
     Card(
         shape = RoundedCornerShape(26.dp),
@@ -408,9 +409,12 @@ private fun ContactCard(c: Contact, now: Long) {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(c.name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (c.number.isNotBlank()) {
-                        Text("+${c.number}", style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
-                    }
+                    Text(
+                        if (c.number.isNotBlank()) "+${c.number}" else "Add phone number",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (c.number.isNotBlank()) cs.onSurfaceVariant else cs.secondary,
+                        modifier = Modifier.clickable { editNumber = true }
+                    )
                     Spacer(Modifier.height(4.dp))
                     val (label, bg, fg) = when {
                         holding -> Triple("Holding ${c.held.size}", cs.secondaryContainer, cs.onSecondaryContainer)
@@ -485,6 +489,55 @@ private fun ContactCard(c: Contact, now: Long) {
             Spacer(Modifier.height(10.dp))
             AutoReplyBox(c)
         }
+    }
+
+    if (editNumber) {
+        var draft by remember { mutableStateOf(if (c.number.isNotBlank()) "+${c.number}" else "") }
+        val parsed = normalizeNumber(ctx, draft)
+        AlertDialog(
+            onDismissRequest = { editNumber = false },
+            title = { Text("${c.name}'s number") },
+            text = {
+                Column {
+                    Text(
+                        "Tempo uses this to recognise them even if their name changes. 050… or +971… both work.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = draft, onValueChange = { draft = it },
+                        singleLine = true,
+                        placeholder = { Text("+971 50 123 4567") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (parsed != null) {
+                        Text("Saved as +$parsed", style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = parsed != null, onClick = {
+                    Store.updateContact(ctx, c.name) { it.copy(number = parsed ?: "") }
+                    Store.log(ctx, "Saved ${c.name}'s number")
+                    editNumber = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    val found = Avatars.whatsAppNumber(ctx, c.name)
+                    if (found != null) {
+                        draft = "+$found"
+                    } else {
+                        Toast.makeText(ctx, "Not found in your contacts — type it in", Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("Find in contacts") }
+            }
+        )
     }
 
     if (confirmRemove) {
