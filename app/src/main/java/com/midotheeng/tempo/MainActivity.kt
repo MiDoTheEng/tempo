@@ -470,6 +470,8 @@ private fun ContactCard(c: Contact, now: Long) {
                     color = cs.onSurfaceVariant
                 )
             }
+            Spacer(Modifier.height(10.dp))
+            AutoReplyBox(c)
         }
     }
 
@@ -488,6 +490,88 @@ private fun ContactCard(c: Contact, now: Long) {
                 }) { Text("Remove") }
             },
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun AutoReplyBox(c: Contact) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var editing by remember { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh)
+            .padding(start = 16.dp, end = 10.dp, top = 6.dp, bottom = if (c.autoReply.isBlank()) 6.dp else 12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Auto-reply", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                Text(
+                    if (c.autoReplyOn) "Sent when the hold ends" else "Off",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Switch(
+                checked = c.autoReplyOn,
+                onCheckedChange = { on ->
+                    if (on && c.autoReply.isBlank()) editing = true
+                    else Store.updateContact(ctx, c.name) { it.copy(autoReplyOn = on) }
+                }
+            )
+        }
+        if (c.autoReply.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                c.autoReply,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (c.autoReplyOn) cs.onPrimary else cs.onSurfaceVariant,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(start = 40.dp)
+                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp))
+                    .background(if (c.autoReplyOn) cs.primary else cs.outlineVariant)
+                    .clickable { editing = true }
+                    .padding(horizontal = 14.dp, vertical = 9.dp)
+            )
+            Text(
+                "Tap the message to edit",
+                style = MaterialTheme.typography.labelSmall,
+                color = cs.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.End).padding(top = 4.dp)
+            )
+        }
+    }
+
+    if (editing) {
+        var draft by remember { mutableStateOf(c.autoReply) }
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text("Auto-reply to ${c.name}") },
+            text = {
+                Column {
+                    Text(
+                        "Tempo sends this for you when their held messages are shown.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = draft, onValueChange = { draft = it },
+                        minLines = 3,
+                        placeholder = { Text("Your message") },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = draft.isNotBlank(), onClick = {
+                    Store.updateContact(ctx, c.name) { it.copy(autoReply = draft.trim(), autoReplyOn = true) }
+                    editing = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } }
         )
     }
 }

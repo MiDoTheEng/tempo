@@ -26,6 +26,7 @@ class WaAccessibility : AccessibilityService() {
     private var lastScan = 0L
     private var lastOpenChat: String? = null
     private var capturing = false
+    private var sending = false
     private val handler = Handler(Looper.getMainLooper())
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -74,6 +75,22 @@ class WaAccessibility : AccessibilityService() {
                 handler.postDelayed({ capturePhoto(pkg, pend.first) }, 900)
             }
         }
+        // Tempo opened this chat to send the auto-reply: tap Send.
+        val ar = AutoReply.pending
+        var openedByTempo = pend != null
+        if (ar != null) {
+            if (now > ar.third) {
+                AutoReply.pending = null
+                if (!sending) AutoReply.askToSend(this, ar.first, ar.second)
+            } else if (nameKey(ar.first) == nameKey(chat)) {
+                openedByTempo = true
+                if (!sending) {
+                    sending = true
+                    handler.postDelayed({ tapSend(pkg, ar.first, ar.second) }, 800)
+                }
+            }
+        }
+
         if (lastOpenChat == null || nameKey(lastOpenChat!!) != nameKey(chat)) {
             // Any chat you open becomes a one-tap suggestion in Tempo's "Add a contact".
             Store.addRecent(this, chat)
@@ -86,7 +103,7 @@ class WaAccessibility : AccessibilityService() {
 
         if (lastOpenChat == null || nameKey(lastOpenChat!!) != nameKey(chat)) {
             lastOpenChat = chat
-            Engine.onChatOpened(this, contact.name)
+            if (!openedByTempo) Engine.onChatOpened(this, contact.name)
         }
 
         if (contact.lastMySend > 0 && bottomMessageIsIncoming(pkg)) {
@@ -203,5 +220,30 @@ class WaAccessibility : AccessibilityService() {
             }
         }
         return best
+    }
+
+    private fun tapSend(pkg: String, name: String, text: String) {
+        val root = rootInActiveWindow
+        val send = root?.findAccessibilityNodeInfosByViewId("$pkg:id/send")?.firstOrNull()
+        val ok = send != null && send.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        AutoReply.pending = null
+        if (ok) {
+            AutoReply.done(this, name, "sent in WhatsApp")
+            leaveWhatsApp(pkg, 3)
+        } else {
+            AutoReply.askToSend(this, name, text)
+        }
+        handler.postDelayed({ sending = false }, 1_500)
+    }
+
+    /** Go back to wherever you were before Tempo opened WhatsApp. */
+    private fun leaveWhatsApp(pkg: String, tries: Int) {
+        if (tries <= 0) return
+        handler.postDelayed({
+            if (rootInActiveWindow?.packageName?.toString() == pkg) {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                leaveWhatsApp(pkg, tries - 1)
+            }
+        }, 600)
     }
 }

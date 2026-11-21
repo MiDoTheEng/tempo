@@ -15,6 +15,14 @@ import android.content.Context
  *
  * Opening their chat in WhatsApp, or sending them a message, drops anything held (you've seen it).
  */
+private data class Due(
+    val name: String,
+    val timedRelease: Boolean,
+    val autoReplyOn: Boolean,
+    val autoReply: String,
+    val contact: Contact,
+)
+
 object Engine {
 
     fun onTheirMessage(ctx: Context, name: String, m: Msg) {
@@ -47,6 +55,11 @@ object Engine {
     fun onMySend(ctx: Context, name: String, time: Long, source: String) {
         val c = Store.find(ctx, name) ?: return
         if (time <= c.lastMySend) return
+        // Tempo's own auto-reply showing up in WhatsApp: restart the timer, but you haven't read anything.
+        if (c.lastAutoReplyAt > 0 && kotlin.math.abs(time - c.lastAutoReplyAt) < 60_000) {
+            Store.updateContact(ctx, name) { it.copy(lastMySend = maxOf(it.lastMySend, time)) }
+            return
+        }
         val dropped = c.held.size
         Store.updateContact(ctx, name) {
             it.copy(lastMySend = time, held = emptyList(), shown = emptyList(), releaseAt = 0)
@@ -92,17 +105,19 @@ object Engine {
     /** Shows everything that is due and sets the alarm for the next one. */
     fun settle(ctx: Context) {
         val now = System.currentTimeMillis()
-        val due = mutableListOf<Contact>()
+        val due = mutableListOf<Due>()
         Store.update(ctx) { st ->
             st.copy(contacts = st.contacts.map { c ->
                 if (c.held.isNotEmpty() && c.releaseAt <= now) {
                     val n = c.copy(shown = (c.shown + c.held).takeLast(25), held = emptyList())
-                    due += n
+                    due += Due(n.name, c.releaseAt > 0, n.autoReplyOn, n.autoReply, n)
                     n
                 } else c
             })
         }
-        due.forEach { Notifier.post(ctx, it) }
+        due.forEach { Notifier.post(ctx, it.contact) }
+        due.filter { it.timedRelease && it.autoReplyOn && it.autoReply.isNotBlank() }
+            .forEach { AutoReply.send(ctx, it.name, it.autoReply) }
         Alarms.scheduleNext(ctx)
     }
 }

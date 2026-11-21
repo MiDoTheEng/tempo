@@ -31,6 +31,11 @@ data class Contact(
     val lastSeenMsgTime: Long = 0L,
     /** How long they took on their last reply. */
     val lastWaitMs: Long = 0L,
+    /** Message Tempo sends for you when a hold ends. */
+    val autoReplyOn: Boolean = false,
+    val autoReply: String = "",
+    /** When Tempo last sent the auto-reply (so it isn't mistaken for you reading the chat). */
+    val lastAutoReplyAt: Long = 0L,
 )
 
 data class AppState(
@@ -137,7 +142,10 @@ object Store {
                     .put("held", msgsToJson(c.held))
                     .put("shown", msgsToJson(c.shown))
                     .put("seen", c.lastSeenMsgTime)
-                    .put("wait", c.lastWaitMs))
+                    .put("wait", c.lastWaitMs)
+                    .put("arOn", c.autoReplyOn)
+                    .put("ar", c.autoReply)
+                    .put("arAt", c.lastAutoReplyAt))
             }
         })
         put("recent", JSONArray(s.recent))
@@ -159,6 +167,9 @@ object Store {
                 shown = msgsFromJson(c.optJSONArray("shown")),
                 lastSeenMsgTime = c.optLong("seen"),
                 lastWaitMs = c.optLong("wait"),
+                autoReplyOn = c.optBoolean("arOn", false),
+                autoReply = c.optString("ar", ""),
+                lastAutoReplyAt = c.optLong("arAt"),
             )
         }
         return AppState(contacts, strings(o.optJSONArray("recent")), strings(o.optJSONArray("log")))
