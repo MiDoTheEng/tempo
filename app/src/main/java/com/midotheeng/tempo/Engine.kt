@@ -115,14 +115,22 @@ object Engine {
                 } else c
             })
         }
-        due.forEach { Notifier.post(ctx, it.contact) }
-        due.filter {
+        val replying = due.filter {
             it.autoReplyOn && it.autoReply.isNotBlank() &&
                 (it.timedRelease || it.contact.autoReplyRepeat) &&
                 // never more than one auto-reply every 2 minutes
                 now - it.contact.lastAutoReplyAt > 120_000
         }
-            .forEach { AutoReply.send(ctx, it.name, it.autoReply) }
+        val silent = replying.filter { it.contact.autoReplySilent }.map { nameKey(it.name) }.toSet()
+        due.forEach { d ->
+            if (nameKey(d.name) in silent) {
+                Store.updateContact(ctx, d.name) { it.copy(shown = emptyList()) }
+                Store.log(ctx, "${d.contact.shown.size} message(s) from ${d.name} — replied silently, no notification")
+            } else {
+                Notifier.post(ctx, d.contact)
+            }
+        }
+        replying.forEach { AutoReply.send(ctx, it.name, it.autoReply) }
         Alarms.scheduleNext(ctx)
     }
 }

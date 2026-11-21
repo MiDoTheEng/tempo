@@ -577,7 +577,7 @@ private fun AutoReplyBox(c: Contact) {
                         !c.autoReplyOn -> "Off"
                         c.autoReplyRepeat -> "Every time they message"
                         else -> "Once, when the hold ends"
-                    },
+                    } + if (c.autoReplyOn && c.autoReplySilent) " · silent" else "",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -616,6 +616,21 @@ private fun AutoReplyBox(c: Contact) {
                     onClick = { Store.updateContact(ctx, c.name) { it.copy(autoReplyRepeat = true) } },
                     shape = SegmentedButtonDefaults.itemShape(1, 2)
                 ) { Text("Every time") }
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Silent", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Reply without notifying me",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = c.autoReplySilent,
+                    onCheckedChange = { on -> Store.updateContact(ctx, c.name) { it.copy(autoReplySilent = on) } }
+                )
             }
             Text(
                 "Tap the message to edit",

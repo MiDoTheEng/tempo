@@ -38,6 +38,8 @@ data class Contact(
     val autoReply: String = "",
     /** true = send every time their messages are shown; false = send once, then switch off. */
     val autoReplyRepeat: Boolean = false,
+    /** When the auto-reply is sent, don't show a notification at all. */
+    val autoReplySilent: Boolean = false,
     /** When Tempo last sent the auto-reply (so it isn't mistaken for you reading the chat). */
     val lastAutoReplyAt: Long = 0L,
 )
@@ -193,6 +195,7 @@ object Store {
                     .put("arOn", c.autoReplyOn)
                     .put("ar", c.autoReply)
                     .put("arRep", c.autoReplyRepeat)
+                    .put("arSil", c.autoReplySilent)
                     .put("arAt", c.lastAutoReplyAt))
             }
         })
@@ -219,6 +222,7 @@ object Store {
                 autoReplyOn = c.optBoolean("arOn", false),
                 autoReply = c.optString("ar", ""),
                 autoReplyRepeat = c.optBoolean("arRep", false),
+                autoReplySilent = c.optBoolean("arSil", false),
                 lastAutoReplyAt = c.optLong("arAt"),
             )
         }
