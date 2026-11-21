@@ -23,6 +23,8 @@ private data class Due(
     val contact: Contact,
 )
 
+const val AUTO_REPLY_PAUSE_MS = 5 * 60_000L
+
 object Engine {
 
     fun onTheirMessage(ctx: Context, name: String, m: Msg) {
@@ -61,6 +63,16 @@ object Engine {
             }
         }
         logLine?.let { Store.log(ctx, it) }
+
+        // 5-minute pause after an auto-reply: collect everything and reply once when it ends.
+        Store.find(ctx, name)?.let { c ->
+            val pauseEnd = c.lastAutoReplyAt + AUTO_REPLY_PAUSE_MS
+            if (!quiet && c.autoReplyOn && c.autoReply.isNotBlank() && c.held.isNotEmpty() && now < pauseEnd && c.releaseAt < pauseEnd) {
+                Store.updateContact(ctx, name) { it.copy(releaseAt = pauseEnd, wentFirst = false) }
+                Store.log(ctx, "${c.name}: auto-reply pause — holding until ${fmtTime(pauseEnd)}")
+            }
+        }
+
         if (quiet) {
             val c = Store.find(ctx, name) ?: return
             if (isSilent(c)) Store.updateContact(ctx, name) { it.copy(shown = emptyList()) }

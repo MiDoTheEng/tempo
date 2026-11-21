@@ -516,7 +516,7 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
                 )
             }
             Spacer(Modifier.height(10.dp))
-            AutoReplyBox(c)
+            AutoReplyBox(c, now)
         }
     }
 
@@ -590,7 +590,7 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AutoReplyBox(c: Contact) {
+private fun AutoReplyBox(c: Contact, now: Long) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
     var editing by remember { mutableStateOf(false) }
@@ -618,6 +618,29 @@ private fun AutoReplyBox(c: Contact) {
                     else Store.updateContact(ctx, c.name) { it.copy(autoReplyOn = on) }
                 }
             )
+        }
+        val pauseEnd = c.lastAutoReplyAt + AUTO_REPLY_PAUSE_MS
+        if (c.autoReplyOn && now < pauseEnd) {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                Modifier.fillMaxWidth().padding(end = 6.dp).clip(RoundedCornerShape(12.dp))
+                    .background(cs.secondaryContainer).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("⏸", modifier = Modifier.padding(end = 8.dp))
+                Column {
+                    Text(
+                        "Replied at ${fmtTime(c.lastAutoReplyAt)} — paused for ${shortDur(pauseEnd - now)}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = cs.onSecondaryContainer
+                    )
+                    Text(
+                        "Their messages are collected and get one reply at ${fmtTime(pauseEnd)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSecondaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
         }
         if (c.autoReply.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
