@@ -45,7 +45,7 @@ object Notifier {
 
     private fun id(name: String) = 1000 + (nameKey(name).hashCode() and 0x0FFFFFFF)
 
-    fun post(ctx: Context, c: Contact) {
+    fun post(ctx: Context, c: Contact, alert: Boolean = true) {
         if (c.shown.isEmpty()) return
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -98,6 +98,7 @@ object Notifier {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .setSilent(!alert)
             .setWhen(c.shown.last().time)
             .setShowWhen(true)
             .setDeleteIntent(dismiss)

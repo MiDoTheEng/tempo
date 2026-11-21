@@ -28,8 +28,14 @@ object Engine {
     fun onTheirMessage(ctx: Context, name: String, m: Msg) {
         val now = System.currentTimeMillis()
         var logLine: String? = null
+        var quiet = false
         Store.updateContact(ctx, name) { c ->
             when {
+                c.mode == MODE_MIRROR && c.lastMySend > 0 && m.time < c.lastMySend -> {
+                    // Written before your (auto-)reply went out — part of the same burst, not an answer.
+                    quiet = true
+                    c.copy(shown = (c.shown + m).takeLast(25))
+                }
                 c.mode == MODE_MIRROR && c.lastMySend > 0 -> {
                     val wait = (m.time - c.lastMySend).coerceAtLeast(0)
                     val delay = wait.coerceAtMost(c.capMinutes * 60_000L)
@@ -44,7 +50,7 @@ object Engine {
                     logLine = "${c.name} messaged — holding until ${fmtTime(at)}"
                     c.copy(releaseAt = at, held = c.held + m)
                 }
-                c.mode == MODE_MIRROR && c.lastMySend == 0L && c.held.isEmpty() && c.shown.isEmpty() -> {
+                c.mode == MODE_MIRROR && c.lastMySend == 0L && c.held.isEmpty() -> {
                     // They messaged you first: show now, and auto-reply now.
                     logLine = "${c.name} messaged first — showing now"
                     c.copy(releaseAt = 0, held = c.held + m, wentFirst = true)
@@ -55,7 +61,15 @@ object Engine {
             }
         }
         logLine?.let { Store.log(ctx, it) }
+        if (quiet) {
+            val c = Store.find(ctx, name) ?: return
+            if (isSilent(c)) Store.updateContact(ctx, name) { it.copy(shown = emptyList()) }
+            else Notifier.post(ctx, c, alert = false)
+        }
     }
+
+    /** Auto-reply with Silent on: never show anything for this person. */
+    fun isSilent(c: Contact) = c.autoReplyOn && c.autoReplySilent && c.autoReply.isNotBlank()
 
     fun onMySend(ctx: Context, name: String, time: Long, source: String) {
         val c = Store.find(ctx, name) ?: return
@@ -126,11 +140,11 @@ object Engine {
                 // only guards against the same release firing twice
                 now - it.contact.lastAutoReplyAt > 10_000
         }
-        val silent = replying.filter { it.contact.autoReplySilent }.map { nameKey(it.name) }.toSet()
+        val silent = due.filter { isSilent(it.contact) }.map { nameKey(it.name) }.toSet()
         due.forEach { d ->
             if (nameKey(d.name) in silent) {
                 Store.updateContact(ctx, d.name) { it.copy(shown = emptyList()) }
-                Store.log(ctx, "${d.contact.shown.size} message(s) from ${d.name} — replied silently, no notification")
+                Store.log(ctx, "${d.contact.shown.size} message(s) from ${d.name} — silent, no notification")
             } else {
                 Notifier.post(ctx, d.contact)
             }
