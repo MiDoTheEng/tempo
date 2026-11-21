@@ -494,6 +494,7 @@ private fun ContactCard(c: Contact, now: Long) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AutoReplyBox(c: Contact) {
     val ctx = LocalContext.current
@@ -507,7 +508,11 @@ private fun AutoReplyBox(c: Contact) {
             Column(Modifier.weight(1f)) {
                 Text("Auto-reply", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
                 Text(
-                    if (c.autoReplyOn) "Sent when the hold ends" else "Off",
+                    when {
+                        !c.autoReplyOn -> "Off"
+                        c.autoReplyRepeat -> "Every time they message"
+                        else -> "Once, when the hold ends"
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -534,6 +539,19 @@ private fun AutoReplyBox(c: Contact) {
                     .clickable { editing = true }
                     .padding(horizontal = 14.dp, vertical = 9.dp)
             )
+            Spacer(Modifier.height(10.dp))
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(end = 6.dp)) {
+                SegmentedButton(
+                    selected = !c.autoReplyRepeat,
+                    onClick = { Store.updateContact(ctx, c.name) { it.copy(autoReplyRepeat = false) } },
+                    shape = SegmentedButtonDefaults.itemShape(0, 2)
+                ) { Text("Just once") }
+                SegmentedButton(
+                    selected = c.autoReplyRepeat,
+                    onClick = { Store.updateContact(ctx, c.name) { it.copy(autoReplyRepeat = true) } },
+                    shape = SegmentedButtonDefaults.itemShape(1, 2)
+                ) { Text("Every time") }
+            }
             Text(
                 "Tap the message to edit",
                 style = MaterialTheme.typography.labelSmall,
@@ -551,7 +569,7 @@ private fun AutoReplyBox(c: Contact) {
             text = {
                 Column {
                     Text(
-                        "Tempo sends this for you when their held messages are shown.",
+                        "Tempo sends this for you when their held messages are shown. Choose Just once or Every time on the card.",
                         style = MaterialTheme.typography.bodySmall,
                         color = cs.onSurfaceVariant
                     )

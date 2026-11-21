@@ -34,6 +34,8 @@ data class Contact(
     /** Message Tempo sends for you when a hold ends. */
     val autoReplyOn: Boolean = false,
     val autoReply: String = "",
+    /** true = send every time their messages are shown; false = send once, then switch off. */
+    val autoReplyRepeat: Boolean = false,
     /** When Tempo last sent the auto-reply (so it isn't mistaken for you reading the chat). */
     val lastAutoReplyAt: Long = 0L,
 )
@@ -145,6 +147,7 @@ object Store {
                     .put("wait", c.lastWaitMs)
                     .put("arOn", c.autoReplyOn)
                     .put("ar", c.autoReply)
+                    .put("arRep", c.autoReplyRepeat)
                     .put("arAt", c.lastAutoReplyAt))
             }
         })
@@ -169,6 +172,7 @@ object Store {
                 lastWaitMs = c.optLong("wait"),
                 autoReplyOn = c.optBoolean("arOn", false),
                 autoReply = c.optString("ar", ""),
+                autoReplyRepeat = c.optBoolean("arRep", false),
                 lastAutoReplyAt = c.optLong("arAt"),
             )
         }

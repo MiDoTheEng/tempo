@@ -116,7 +116,12 @@ object Engine {
             })
         }
         due.forEach { Notifier.post(ctx, it.contact) }
-        due.filter { it.timedRelease && it.autoReplyOn && it.autoReply.isNotBlank() }
+        due.filter {
+            it.autoReplyOn && it.autoReply.isNotBlank() &&
+                (it.timedRelease || it.contact.autoReplyRepeat) &&
+                // never more than one auto-reply every 2 minutes
+                now - it.contact.lastAutoReplyAt > 120_000
+        }
             .forEach { AutoReply.send(ctx, it.name, it.autoReply) }
         Alarms.scheduleNext(ctx)
     }
