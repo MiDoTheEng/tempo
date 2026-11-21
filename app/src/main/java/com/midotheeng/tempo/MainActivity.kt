@@ -311,6 +311,7 @@ private fun shortDur(ms: Long): String {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PeopleRow(label: String, people: List<Bubble>, empty: String, onPick: (String) -> Unit) {
     Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -330,11 +331,12 @@ private fun PeopleRow(label: String, people: List<Bubble>, empty: String, onPick
             modifier = Modifier.padding(horizontal = 22.dp)
         )
     } else {
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 22.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(people, key = { nameKey(it.name) }) { p ->
+            people.forEach { p ->
                 Column(
                     Modifier.width(62.dp).clip(RoundedCornerShape(14.dp)).clickable { onPick(p.name) },
                     horizontalAlignment = Alignment.CenterHorizontally
