@@ -16,6 +16,8 @@ data class Msg(val text: String, val time: Long)
 
 data class Contact(
     val name: String,
+    /** WhatsApp phone number, digits only — used to recognise them if their name changes. */
+    val number: String = "",
     val mode: String = MODE_MIRROR,
     val fixedMinutes: Int = 60,
     val capMinutes: Int = 12 * 60,
@@ -72,6 +74,48 @@ object Store {
     fun find(ctx: Context, name: String): Contact? {
         val k = nameKey(name)
         return get(ctx).contacts.firstOrNull { nameKey(it.name) == k }
+    }
+
+    /**
+     * Finds a watched contact by name, or — if the name changed — by phone number.
+     * [number] is any number already known for this chat (e.g. from WhatsApp's notification).
+     * When found by number under a new name, the contact is renamed.
+     */
+    fun resolve(ctx: Context, name: String, number: String? = null): Contact? {
+        find(ctx, name)?.let { c ->
+            if (c.number.isBlank()) {
+                val n = number?.takeIf { it.length >= 8 } ?: Avatars.whatsAppNumber(ctx, name)
+                if (n != null) updateContact(ctx, c.name) { it.copy(number = n) }
+            }
+            return find(ctx, name)
+        }
+        val watchedWithNumbers = get(ctx).contacts.filter { it.number.isNotBlank() }
+        if (watchedWithNumbers.isEmpty()) return null
+        val candidates = listOfNotNull(
+            number?.takeIf { it.length >= 8 },
+            name.filter { it.isDigit() }.takeIf { it.length >= 8 && name.none { ch -> ch.isLetter() } },
+            lookupNumberCached(ctx, name)
+        )
+        val match = watchedWithNumbers.firstOrNull { c -> candidates.any { sameNumber(it, c.number) } } ?: return null
+        val newName = cleanName(name)
+        Store.log(ctx, "${match.name} is now called $newName in WhatsApp — updated")
+        Avatars.rename(ctx, match.name, newName)
+        Notifier.cancel(ctx, match.name)
+        updateContact(ctx, match.name) { it.copy(name = newName) }
+        return find(ctx, newName)
+    }
+
+    private val lookupCache = HashMap<String, Pair<String?, Long>>()
+
+    private fun lookupNumberCached(ctx: Context, name: String): String? {
+        val k = nameKey(name)
+        val now = System.currentTimeMillis()
+        synchronized(lookupCache) {
+            lookupCache[k]?.let { if (now - it.second < 10 * 60_000) return it.first }
+        }
+        val n = Avatars.whatsAppNumber(ctx, name)
+        synchronized(lookupCache) { lookupCache[k] = n to now }
+        return n
     }
 
     fun update(ctx: Context, fn: (AppState) -> AppState): AppState = synchronized(this) {
@@ -136,6 +180,7 @@ object Store {
             s.contacts.forEach { c ->
                 put(JSONObject()
                     .put("name", c.name)
+                    .put("num", c.number)
                     .put("mode", c.mode)
                     .put("fixed", c.fixedMinutes)
                     .put("cap", c.capMinutes)
@@ -161,6 +206,7 @@ object Store {
             val c = arr.getJSONObject(i)
             Contact(
                 name = c.getString("name"),
+                number = c.optString("num", ""),
                 mode = c.optString("mode", MODE_MIRROR),
                 fixedMinutes = c.optInt("fixed", 60),
                 capMinutes = c.optInt("cap", 12 * 60),
@@ -196,4 +242,21 @@ fun fmtTime(ms: Long): String {
     val sameDay = SimpleDateFormat("yyyyMMdd", Locale.ROOT).let { it.format(Date(ms)) == it.format(Date()) }
     val pattern = if (sameDay) "HH:mm" else "EEE HH:mm"
     return SimpleDateFormat(pattern, Locale.getDefault()).format(Date(ms))
+}
+
+/** Same phone number, ignoring country-code / leading-zero differences. */
+fun sameNumber(a: String, b: String): Boolean {
+    val x = a.filter { it.isDigit() }
+    val y = b.filter { it.isDigit() }
+    if (x.length < 8 || y.length < 8) return false
+    return x.takeLast(9) == y.takeLast(9)
+}
+
+/** Pulls a phone number out of WhatsApp ids like "971501234567@s.whatsapp.net" or "tel:+971...". */
+fun numberFromWhatsAppId(id: String?): String? {
+    if (id.isNullOrBlank()) return null
+    if (id.contains("@g.us")) return null
+    val core = if (id.contains('@')) id.substringBefore('@') else id.removePrefix("tel:")
+    val d = core.filter { it.isDigit() }
+    return d.takeIf { it.length >= 8 }
 }

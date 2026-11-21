@@ -52,7 +52,13 @@ class WaListener : NotificationListenerService() {
             Avatars.saveFromWhatsApp(this, name, photo)
         } catch (_: Exception) {
         }
-        val contact = Store.find(this, name) ?: return
+        // WhatsApp tags its notifications with the chat id, which holds the phone number.
+        val idNumber = listOfNotNull(
+            if (android.os.Build.VERSION.SDK_INT >= 29) n.shortcutId else null,
+            style?.messages?.lastOrNull { it.person != null }?.person?.key,
+            style?.messages?.lastOrNull { it.person != null }?.person?.uri,
+        ).firstNotNullOfOrNull { numberFromWhatsAppId(it) }
+        val contact = Store.resolve(this, name, idNumber) ?: return
         val key = nameKey(contact.name)
 
         // Keep WhatsApp's own tap and reply actions so Tempo's notification can reuse them.

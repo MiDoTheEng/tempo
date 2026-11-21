@@ -147,7 +147,9 @@ private fun contactsOn(ctx: Context) =
 private fun addContact(ctx: Context, name: String) {
     val clean = cleanName(name)
     if (clean.isBlank() || Store.find(ctx, clean) != null) return
-    Store.update(ctx) { it.copy(contacts = it.contacts + Contact(name = clean)) }
+    val number = Avatars.whatsAppNumber(ctx, clean) ?: ""
+    if (number.isNotEmpty() && Store.get(ctx).contacts.any { sameNumber(it.number, number) }) return
+    Store.update(ctx) { it.copy(contacts = it.contacts + Contact(name = clean, number = number)) }
     Store.log(ctx, "Now watching $clean")
     fetchWhatsAppPhoto(ctx, clean)
 }
@@ -162,6 +164,10 @@ private fun Home() {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         refresh++
         Engine.settle(ctx)
+        // Remember numbers for people added before numbers were saved.
+        Store.get(ctx).contacts.filter { it.number.isBlank() }.forEach { c ->
+            Avatars.whatsAppNumber(ctx, c.name)?.let { n -> Store.updateContact(ctx, c.name) { it.copy(number = n) } }
+        }
     }
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
@@ -399,6 +405,9 @@ private fun ContactCard(c: Contact, now: Long) {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(c.name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (c.number.isNotBlank()) {
+                        Text("+${c.number}", style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+                    }
                     Spacer(Modifier.height(4.dp))
                     val (label, bg, fg) = when {
                         holding -> Triple("Holding ${c.held.size}", cs.secondaryContainer, cs.onSecondaryContainer)

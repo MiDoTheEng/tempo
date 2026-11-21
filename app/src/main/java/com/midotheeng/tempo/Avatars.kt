@@ -43,6 +43,17 @@ object Avatars {
         }
     }
 
+    fun rename(ctx: Context, from: String, to: String) {
+        try {
+            val a = file(ctx, from)
+            val b = file(ctx, to)
+            if (a.exists() && !b.exists()) a.renameTo(b)
+            cache.remove(nameKey(from))
+            refresh()
+        } catch (_: Exception) {
+        }
+    }
+
     fun hasWhatsAppPhoto(ctx: Context, name: String) = file(ctx, name).exists()
 
     /** International number WhatsApp uses for this contact (digits only), or null. */

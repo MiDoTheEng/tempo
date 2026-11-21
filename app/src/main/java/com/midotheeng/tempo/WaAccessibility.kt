@@ -51,7 +51,8 @@ class WaAccessibility : AccessibilityService() {
         val isSend = id.endsWith(":id/send") || desc.equals("Send", ignoreCase = true) || desc == "إرسال"
         if (!isSend) return
         val chat = currentChatName(pkg) ?: return
-        Engine.onMySend(this, chat, System.currentTimeMillis(), "in WhatsApp")
+        val c = Store.resolve(this, chat) ?: return
+        Engine.onMySend(this, c.name, System.currentTimeMillis(), "in WhatsApp")
     }
 
     private fun scan(pkg: String, force: Boolean) {
@@ -95,7 +96,7 @@ class WaAccessibility : AccessibilityService() {
             // Any chat you open becomes a one-tap suggestion in Tempo's "Add a contact".
             Store.addRecent(this, chat)
         }
-        val contact = Store.find(this, chat)
+        val contact = Store.resolve(this, chat)
         if (contact == null) {
             lastOpenChat = chat
             return
