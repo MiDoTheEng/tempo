@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -62,6 +63,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // ---------- Look ----------
@@ -183,12 +185,30 @@ private fun Home() {
     var showAdd by remember { mutableStateOf(false) }
     var setupOpen by remember { mutableStateOf(false) }
 
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var flashKey by remember { mutableStateOf<String?>(null) }
+    val jumpTo: (String) -> Unit = { name ->
+        val i = state.contacts.indexOfFirst { nameKey(it.name) == nameKey(name) }
+        if (i >= 0) {
+            // hero, optional setup card, "People" header, then the cards
+            val index = 1 + (if (allSet) 0 else 1) + 1 + i
+            scope.launch {
+                listState.animateScrollToItem(index)
+                flashKey = nameKey(name)
+                delay(1_400)
+                flashKey = null
+            }
+        }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().statusBarsPadding(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item { Hero(state, now) }
+        item { Hero(state, now, jumpTo) }
 
         if (!allSet) {
             item { SetupCard(perms, onChanged = { refresh++ }, collapsible = false, open = true, onToggle = {}) }
@@ -210,7 +230,7 @@ private fun Home() {
         if (state.contacts.isEmpty()) {
             item { EmptyPeople(onAdd = { showAdd = true }) }
         } else {
-            items(state.contacts, key = { nameKey(it.name) }) { c -> ContactCard(c, now) }
+            items(state.contacts, key = { nameKey(it.name) }) { c -> ContactCard(c, now, flash = flashKey == nameKey(c.name)) }
         }
 
         if (state.log.isNotEmpty()) item { ActivityCard(state.log) }
@@ -224,7 +244,7 @@ private fun Home() {
 }
 
 @Composable
-private fun Hero(state: AppState, now: Long) {
+private fun Hero(state: AppState, now: Long, onPick: (String) -> Unit) {
     val held = state.contacts.filter { it.held.isNotEmpty() && it.releaseAt > 0 }
     val timing = state.contacts.filter { it.mode == MODE_MIRROR && it.lastMySend > 0 && it.held.isEmpty() }
     val mint = Color(0xFF9CCFBE)
@@ -256,20 +276,23 @@ private fun Hero(state: AppState, now: Long) {
                         }
                     )
                 },
-                empty = "No one yet — add someone below"
+                empty = "No one yet — add someone below",
+                onPick = onPick
             )
             Spacer(Modifier.height(18.dp))
             PeopleRow(
                 "Timing",
                 timing.map { Bubble(it.name, shortDur(now - it.lastMySend), mint) },
-                empty = "No replies being timed"
+                empty = "No replies being timed",
+                onPick = onPick
             )
             if (held.isNotEmpty()) {
                 Spacer(Modifier.height(18.dp))
                 PeopleRow(
                     "Held",
                     held.map { Bubble(it.name, shortDur(it.releaseAt - now) + " left", Amber) },
-                    empty = ""
+                    empty = "",
+                    onPick = onPick
                 )
             }
         }
@@ -289,7 +312,7 @@ private fun shortDur(ms: Long): String {
 }
 
 @Composable
-private fun PeopleRow(label: String, people: List<Bubble>, empty: String) {
+private fun PeopleRow(label: String, people: List<Bubble>, empty: String, onPick: (String) -> Unit) {
     Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label.uppercase(), style = MaterialTheme.typography.labelMedium, letterSpacing = 1.2.sp, color = Sand.copy(alpha = 0.7f))
         Spacer(Modifier.width(8.dp))
@@ -312,7 +335,10 @@ private fun PeopleRow(label: String, people: List<Bubble>, empty: String) {
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             items(people, key = { nameKey(it.name) }) { p ->
-                Column(Modifier.width(62.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    Modifier.width(62.dp).clip(RoundedCornerShape(14.dp)).clickable { onPick(p.name) },
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Box(
                         Modifier.size(58.dp).border(2.5.dp, p.ring, CircleShape).padding(4.dp),
                         contentAlignment = Alignment.Center
@@ -374,7 +400,7 @@ private fun EmptyPeople(onAdd: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ContactCard(c: Contact, now: Long) {
+private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
     val holding = c.held.isNotEmpty() && c.releaseAt > 0
@@ -386,6 +412,7 @@ private fun ContactCard(c: Contact, now: Long) {
             else -> cs.outlineVariant
         }, label = "ring"
     )
+    val flashColor by animateColorAsState(if (flash) cs.secondary else cs.outlineVariant, label = "flash")
     var menu by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var editNumber by remember { mutableStateOf(false) }
@@ -393,7 +420,7 @@ private fun ContactCard(c: Contact, now: Long) {
     Card(
         shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(containerColor = cs.surface),
-        border = BorderStroke(1.dp, cs.outlineVariant),
+        border = BorderStroke(if (flash) 2.5.dp else 1.dp, flashColor),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(18.dp)) {
