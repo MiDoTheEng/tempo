@@ -40,6 +40,8 @@ data class Contact(
     val autoReplyRepeat: Boolean = false,
     /** When the auto-reply is sent, don't show a notification at all. */
     val autoReplySilent: Boolean = false,
+    /** They messaged first (not a reply to you): show now and auto-reply now. Not saved. */
+    val wentFirst: Boolean = false,
     /** When Tempo last sent the auto-reply (so it isn't mistaken for you reading the chat). */
     val lastAutoReplyAt: Long = 0L,
 )

@@ -44,8 +44,13 @@ object Engine {
                     logLine = "${c.name} messaged — holding until ${fmtTime(at)}"
                     c.copy(releaseAt = at, held = c.held + m)
                 }
+                c.mode == MODE_MIRROR && c.lastMySend == 0L && c.held.isEmpty() && c.shown.isEmpty() -> {
+                    // They messaged you first: show now, and auto-reply now.
+                    logLine = "${c.name} messaged first — showing now"
+                    c.copy(releaseAt = 0, held = c.held + m, wentFirst = true)
+                }
                 else ->
-                    // Not a reply to you (or the held window already ended): show now.
+                    // More messages after the held window ended: show now.
                     c.copy(releaseAt = 0, held = c.held + m)
             }
         }
@@ -94,7 +99,7 @@ object Engine {
     }
 
     fun releaseNow(ctx: Context, name: String) {
-        Store.updateContact(ctx, name) { it.copy(releaseAt = 0) }
+        Store.updateContact(ctx, name) { it.copy(releaseAt = 0, wentFirst = false) }
         settle(ctx)
     }
 
@@ -109,8 +114,8 @@ object Engine {
         Store.update(ctx) { st ->
             st.copy(contacts = st.contacts.map { c ->
                 if (c.held.isNotEmpty() && c.releaseAt <= now) {
-                    val n = c.copy(shown = (c.shown + c.held).takeLast(25), held = emptyList())
-                    due += Due(n.name, c.releaseAt > 0, n.autoReplyOn, n.autoReply, n)
+                    val n = c.copy(shown = (c.shown + c.held).takeLast(25), held = emptyList(), wentFirst = false)
+                    due += Due(n.name, c.releaseAt > 0 || c.wentFirst, n.autoReplyOn, n.autoReply, n)
                     n
                 } else c
             })
