@@ -141,6 +141,9 @@ private fun notifOn(ctx: Context) = Build.VERSION.SDK_INT < 33 ||
 private fun exactOn(ctx: Context) = Build.VERSION.SDK_INT < 31 ||
     ctx.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
 
+private fun batteryOn(ctx: Context) =
+    ctx.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName)
+
 private fun contactsOn(ctx: Context) =
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
 
@@ -175,7 +178,7 @@ private fun Home() {
             value = System.currentTimeMillis()
         }
     }
-    val perms = remember(refresh) { listOf(listenerOn(ctx), accessibilityOn(ctx), notifOn(ctx), exactOn(ctx)) }
+    val perms = remember(refresh) { listOf(listenerOn(ctx), accessibilityOn(ctx), notifOn(ctx), exactOn(ctx), batteryOn(ctx)) }
     val allSet = perms.all { it }
     var showAdd by remember { mutableStateOf(false) }
     var setupOpen by remember { mutableStateOf(false) }
@@ -749,6 +752,19 @@ private fun SetupCard(perms: List<Boolean>, onChanged: () -> Unit, collapsible: 
                         if (Build.VERSION.SDK_INT >= 31) ctx.startActivity(
                             Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${ctx.packageName}"))
                         )
+                    }
+                    SetupStep(
+                        5, "Unrestricted battery",
+                        "Keeps Tempo running so auto-replies send even when the phone is locked.",
+                        perms[4]
+                    ) {
+                        try {
+                            ctx.startActivity(
+                                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}"))
+                            )
+                        } catch (_: Exception) {
+                            ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                        }
                     }
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.secondaryContainer.copy(alpha = 0.6f))
