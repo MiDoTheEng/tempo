@@ -26,7 +26,9 @@ object AutoReply {
     fun send(ctx: Context, name: String, text: String) {
         val now = System.currentTimeMillis()
         // "Just once": switch off after this one.
+        val c = Store.find(ctx, name)
         Store.updateContact(ctx, name) { it.copy(lastAutoReplyAt = now, autoReplyOn = it.autoReplyOn && it.autoReplyRepeat) }
+        if (c != null && !c.autoReplyRepeat) Store.log(ctx, "Auto-reply to $name was set to Just once — now switched off")
 
         Notifier.replyActions[nameKey(name)]?.let { action ->
             if (sendViaAction(ctx, action, text)) {

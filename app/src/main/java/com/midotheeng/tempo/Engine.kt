@@ -123,8 +123,8 @@ object Engine {
         val replying = due.filter {
             it.autoReplyOn && it.autoReply.isNotBlank() &&
                 (it.timedRelease || it.contact.autoReplyRepeat) &&
-                // never more than one auto-reply every 2 minutes
-                now - it.contact.lastAutoReplyAt > 120_000
+                // only guards against the same release firing twice
+                now - it.contact.lastAutoReplyAt > 10_000
         }
         val silent = replying.filter { it.contact.autoReplySilent }.map { nameKey(it.name) }.toSet()
         due.forEach { d ->
