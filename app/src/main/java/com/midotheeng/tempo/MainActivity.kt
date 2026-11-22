@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -461,10 +462,6 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text("Refresh photo") }, onClick = { menu = false; fetchWhatsAppPhoto(ctx, c.name) })
-                        if (c.mode == MODE_MIRROR) DropdownMenuItem(
-                            text = { Text("I just messaged them") },
-                            onClick = { menu = false; Engine.onMySend(ctx, c.name, System.currentTimeMillis(), "marked by hand") }
-                        )
                         DropdownMenuItem(text = { Text("Remove", color = cs.error) }, onClick = { menu = false; confirmRemove = true })
                     }
                 }
@@ -476,6 +473,19 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
             } else if (timing) {
                 Spacer(Modifier.height(16.dp))
                 TimingPanel(c, now)
+            }
+
+            if (c.mode == MODE_MIRROR && !holding) {
+                Spacer(Modifier.height(14.dp))
+                OutlinedButton(
+                    onClick = { Engine.onMySend(ctx, c.name, System.currentTimeMillis(), "marked by hand") },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.Send, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (timing) "I messaged them again — restart timer" else "I just messaged them")
+                }
             }
 
             Spacer(Modifier.height(16.dp))
