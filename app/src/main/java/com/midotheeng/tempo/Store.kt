@@ -18,6 +18,8 @@ data class Contact(
     val name: String,
     /** WhatsApp phone number, digits only — used to recognise them if their name changes. */
     val number: String = "",
+    /** WhatsApp's internal chat ids (notification tags) seen for this person. */
+    val waTags: List<String> = emptyList(),
     val mode: String = MODE_MIRROR,
     val fixedMinutes: Int = 60,
     val capMinutes: Int = 12 * 60,
@@ -190,6 +192,7 @@ object Store {
                 put(JSONObject()
                     .put("name", c.name)
                     .put("num", c.number)
+                    .put("tags", JSONArray(c.waTags))
                     .put("mode", c.mode)
                     .put("fixed", c.fixedMinutes)
                     .put("cap", c.capMinutes)
@@ -218,6 +221,7 @@ object Store {
             Contact(
                 name = c.getString("name"),
                 number = c.optString("num", ""),
+                waTags = strings(c.optJSONArray("tags")),
                 mode = c.optString("mode", MODE_MIRROR),
                 fixedMinutes = c.optInt("fixed", 60),
                 capMinutes = c.optInt("cap", 12 * 60),

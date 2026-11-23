@@ -92,7 +92,10 @@ class WaListener : NotificationListenerService() {
     private fun whoIs(sbn: StatusBarNotification, style: NotificationCompat.MessagingStyle?): Pair<Contact?, String?> {
         val n = sbn.notification
         // 1. Same WhatsApp chat id (tag) we've already matched before.
-        sbn.tag?.let { tag -> chatByTag[tag]?.let { known -> Store.find(this, known)?.let { return it to it.name } } }
+        sbn.tag?.let { tag ->
+            chatByTag[tag]?.let { known -> Store.find(this, known)?.let { return it to it.name } }
+            Store.get(this).contacts.firstOrNull { tag in it.waTags }?.let { return it to it.name }
+        }
 
         // 2. Chat name — skipping "You", which WhatsApp shows when your reply is the last message.
         val me = style?.user?.name?.toString()?.trim()
@@ -116,7 +119,10 @@ class WaListener : NotificationListenerService() {
             val now = System.currentTimeMillis()
             c = Store.get(this).contacts.filter { now - it.lastAutoReplyAt < 3 * 60_000 }.singleOrNull()
         }
-        if (c != null) sbn.tag?.let { chatByTag[it] = c.name }
+        if (c != null) sbn.tag?.takeIf { it.isNotBlank() }?.let { tag ->
+            chatByTag[tag] = c.name
+            if (tag !in c.waTags) Store.updateContact(this, c.name) { it.copy(waTags = (it.waTags + tag).takeLast(5)) }
+        }
         return c to name
     }
 
