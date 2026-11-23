@@ -17,6 +17,8 @@ class WaListener : NotificationListenerService() {
 
     companion object {
         @Volatile var instance: WaListener? = null
+        /** WhatsApp chat id (notification tag) -> watched contact name. */
+        val chatByTag = java.util.concurrent.ConcurrentHashMap<String, String>()
         private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
         /** Run a clean-up of leftover WhatsApp notifications a few times over the next half minute. */
@@ -64,12 +66,7 @@ class WaListener : NotificationListenerService() {
             if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) continue
             if (n.extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)) continue
             val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)
-            val title = (style?.conversationTitle ?: n.extras.getCharSequence(Notification.EXTRA_TITLE))?.toString() ?: continue
-            val idNumber = listOfNotNull(
-                if (android.os.Build.VERSION.SDK_INT >= 29) n.shortcutId else null,
-                style?.messages?.lastOrNull { it.person != null }?.person?.key,
-            ).firstNotNullOfOrNull { numberFromWhatsAppId(it) }
-            val c = Store.resolve(this, cleanName(title), idNumber) ?: continue
+            val c = whoIs(sbn, style).first ?: continue
             hide(sbn, c.name)
             lastHiddenAt = System.currentTimeMillis()
             removed++
@@ -88,6 +85,39 @@ class WaListener : NotificationListenerService() {
         } catch (e: Exception) {
             Store.log(this, "Error reading a WhatsApp notification: ${e.javaClass.simpleName}")
         }
+    }
+
+
+    /** Which watched contact a WhatsApp notification belongs to (or null), plus the chat name. */
+    private fun whoIs(sbn: StatusBarNotification, style: NotificationCompat.MessagingStyle?): Pair<Contact?, String?> {
+        val n = sbn.notification
+        // 1. Same WhatsApp chat id (tag) we've already matched before.
+        sbn.tag?.let { tag -> chatByTag[tag]?.let { known -> Store.find(this, known)?.let { return it to it.name } } }
+
+        // 2. Chat name — skipping "You", which WhatsApp shows when your reply is the last message.
+        val me = style?.user?.name?.toString()?.trim()
+        fun isMe(x: String?) = x != null && (x.trim().equals("You", true) || x.trim() == "أنت" || x.trim() == me)
+        val name = listOfNotNull(
+            style?.conversationTitle?.toString(),
+            style?.messages?.reversed()?.mapNotNull { it.person?.name?.toString() }?.firstOrNull { !isMe(it) },
+            n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
+        ).map { cleanName(it) }.firstOrNull { it.isNotBlank() && !isMe(it) && !it.equals("WhatsApp", true) && !it.equals("WhatsApp Business", true) }
+
+        val idNumber = listOfNotNull(
+            if (android.os.Build.VERSION.SDK_INT >= 29) n.shortcutId else null,
+            style?.messages?.lastOrNull { it.person != null && !isMe(it.person?.name?.toString()) }?.person?.key,
+            style?.messages?.lastOrNull { it.person != null && !isMe(it.person?.name?.toString()) }?.person?.uri,
+        ).firstNotNullOfOrNull { numberFromWhatsAppId(it) }
+
+        var c = if (name != null) Store.resolve(this, name, idNumber) else null
+        if (c == null && idNumber != null) c = Store.get(this).contacts.firstOrNull { sameNumber(it.number, idNumber) }
+        // 3. Only your own message in it and nothing else to go on: the contact Tempo just auto-replied to.
+        if (c == null && name == null) {
+            val now = System.currentTimeMillis()
+            c = Store.get(this).contacts.filter { now - it.lastAutoReplyAt < 3 * 60_000 }.singleOrNull()
+        }
+        if (c != null) sbn.tag?.let { chatByTag[it] = c.name }
+        return c to name
     }
 
     private fun describe(sbn: StatusBarNotification): String {
@@ -118,28 +148,23 @@ class WaListener : NotificationListenerService() {
         val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)
         if (style?.isGroupConversation == true) return
 
-        val rawTitle = (style?.conversationTitle ?: extras.getCharSequence(Notification.EXTRA_TITLE))?.toString() ?: return
-        val name = cleanName(rawTitle)
-        if (name.isBlank() || name.equals("WhatsApp", ignoreCase = true) || name.equals("WhatsApp Business", ignoreCase = true)) return
-
-        Store.addRecent(this, name)
-        try {
-            val photo = n.getLargeIcon()?.loadDrawable(this)
-                ?: style?.messages?.lastOrNull { it.person?.icon != null }?.person?.icon?.loadDrawable(this)
-            Avatars.saveFromWhatsApp(this, name, photo)
-        } catch (_: Exception) {
+        val (found, chatName) = whoIs(sbn, style)
+        val name = chatName ?: found?.name
+        if (name != null) {
+            Store.addRecent(this, name)
+            try {
+                val photo = n.getLargeIcon()?.loadDrawable(this)
+                    ?: style?.messages?.lastOrNull { it.person?.icon != null }?.person?.icon?.loadDrawable(this)
+                if (found == null || chatName != null) Avatars.saveFromWhatsApp(this, name, photo)
+            } catch (_: Exception) {
+            }
         }
-        // WhatsApp tags its notifications with the chat id, which holds the phone number.
-        val idNumber = listOfNotNull(
-            if (android.os.Build.VERSION.SDK_INT >= 29) n.shortcutId else null,
-            style?.messages?.lastOrNull { it.person != null }?.person?.key,
-            style?.messages?.lastOrNull { it.person != null }?.person?.uri,
-        ).firstNotNullOfOrNull { numberFromWhatsAppId(it) }
-        val contact = Store.resolve(this, name, idNumber)
+        val contact = found
         if (contact == null) {
-            Store.debug(this, "  not watched: \"$name\" (number ${idNumber ?: "?"})")
+            Store.debug(this, "  not watched: \"${name ?: "?"}\"")
             return
         }
+        Store.debug(this, "  belongs to ${contact.name}")
         val key = nameKey(contact.name)
 
         // Keep WhatsApp's own tap and reply actions so Tempo's notification can reuse them.
@@ -170,7 +195,7 @@ class WaListener : NotificationListenerService() {
                     (contact.autoReply.isNotBlank() && text == contact.autoReply.trim() &&
                         kotlin.math.abs(m.timestamp - contact.lastAutoReplyAt) < 5 * 60_000) ||
                     // anything stamped right after Tempo's auto-reply that matches its text
-                    (senderName != null && senderName != cleanName(contact.name) && senderName != cleanName(name) &&
+                    (senderName != null && senderName != cleanName(contact.name) && senderName != cleanName(chatName ?: contact.name) &&
                         contact.lastAutoReplyAt > 0 && kotlin.math.abs(m.timestamp - contact.lastAutoReplyAt) < 15_000)
                 In(Msg(m.text?.toString() ?: "", m.timestamp), fromMe)
             }
