@@ -126,7 +126,19 @@ class WaListener : NotificationListenerService() {
             val myName = style.user.name?.toString()
             style.messages.map { m ->
                 val sender = m.person
-                val fromMe = sender == null || (myName != null && sender.name?.toString() == myName)
+                val senderName = sender?.name?.toString()?.trim()
+                val text = m.text?.toString()?.trim() ?: ""
+                val user = style.user
+                val fromMe = sender == null ||
+                    (myName != null && senderName == myName) ||
+                    (user.key != null && sender.key == user.key) ||
+                    senderName.equals("You", ignoreCase = true) || senderName == "أنت" ||
+                    // Tempo's own auto-reply showing up in WhatsApp's re-posted notification
+                    (contact.autoReply.isNotBlank() && text == contact.autoReply.trim() &&
+                        kotlin.math.abs(m.timestamp - contact.lastAutoReplyAt) < 5 * 60_000) ||
+                    // anything stamped right after Tempo's auto-reply that matches its text
+                    (senderName != null && senderName != cleanName(contact.name) && senderName != cleanName(name) &&
+                        contact.lastAutoReplyAt > 0 && kotlin.math.abs(m.timestamp - contact.lastAutoReplyAt) < 15_000)
                 In(Msg(m.text?.toString() ?: "", m.timestamp), fromMe)
             }
         } else {
