@@ -151,14 +151,19 @@ private fun contactsOn(ctx: Context) =
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
 
 private fun addContact(ctx: Context, name: String) {
-    val clean = cleanName(name)
+    val typedNumber = typedPhone(ctx, name)
+    val clean = if (typedNumber != null) "+$typedNumber" else cleanName(name)
     if (clean.isBlank() || Store.find(ctx, clean) != null) return
-    val number = Avatars.whatsAppNumber(ctx, clean) ?: ""
+    val number = typedNumber ?: Avatars.whatsAppNumber(ctx, clean) ?: ""
     if (number.isNotEmpty() && Store.get(ctx).contacts.any { sameNumber(it.number, number) }) return
     Store.update(ctx) { it.copy(contacts = it.contacts + Contact(name = clean, number = number)) }
     Store.log(ctx, "Now watching $clean")
     fetchWhatsAppPhoto(ctx, clean)
 }
+
+/** If the text is a phone number (no letters), its international digits; otherwise null. */
+private fun typedPhone(ctx: Context, text: String): String? =
+    if (text.none { it.isLetter() } && text.count { it.isDigit() } >= 8) normalizeNumber(ctx, text) else null
 
 // ---------- Home ----------
 
@@ -1023,7 +1028,7 @@ private fun AddSheet(state: AppState, onDismiss: () -> Unit) {
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
                 singleLine = true,
-                placeholder = { Text("Search or type a name") },
+                placeholder = { Text("Search, name, or +country number") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -1064,8 +1069,16 @@ private fun AddSheet(state: AppState, onDismiss: () -> Unit) {
                 if (q.isNotEmpty() && all.none { it.equals(q, ignoreCase = true) } && nameKey(q) !in watched) {
                     item {
                         ListItem(
-                            headlineContent = { Text("Add “$q”") },
-                            supportingContent = { Text("Exactly as WhatsApp shows it") },
+                            headlineContent = {
+                                val num = typedPhone(ctx, q)
+                                Text(if (num != null) "Add number +$num" else "Add “$q”")
+                            },
+                            supportingContent = {
+                                Text(
+                                    if (typedPhone(ctx, q) != null) "Works even if they're not in your contacts"
+                                    else "Exactly as WhatsApp shows it — or type their number with country code"
+                                )
+                            },
                             leadingContent = {
                                 Box(Modifier.size(42.dp).clip(CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
                                     Icon(Icons.Filled.Add, null, tint = cs.onPrimaryContainer)
@@ -1170,7 +1183,7 @@ private fun fetchWhatsAppPhoto(ctx: Context, name: String) {
         Toast.makeText(ctx, "Turn on Accessibility for Tempo to get the WhatsApp photo", Toast.LENGTH_LONG).show()
         return
     }
-    val number = Avatars.whatsAppNumber(ctx, name)
+    val number = Store.find(ctx, name)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, name)
     if (number == null) {
         Toast.makeText(ctx, "Couldn't find $name's number — open their chat in WhatsApp once and the photo will be grabbed", Toast.LENGTH_LONG).show()
         Avatars.pendingCapture = name to (System.currentTimeMillis() + 60_000)

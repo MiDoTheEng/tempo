@@ -37,7 +37,7 @@ object AutoReply {
             }
         }
 
-        val number = Avatars.whatsAppNumber(ctx, name)
+        val number = Store.find(ctx, name)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, name)
         if (number != null && unlocked(ctx) && accessibilityOn(ctx)) {
             pending = Triple(name, text, now + 20_000)
             try {
@@ -58,7 +58,7 @@ object AutoReply {
         WaListener.sweepSoon()
     }
 
-    fun askToSend(ctx: Context, name: String, text: String, number: String? = Avatars.whatsAppNumber(ctx, name)) {
+    fun askToSend(ctx: Context, name: String, text: String, number: String? = Store.find(ctx, name)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, name)) {
         Notifier.ensureChannel(ctx)
         val open = if (number != null) chatIntent(ctx, number, text)
         else ctx.packageManager.getLaunchIntentForPackage("com.whatsapp")
