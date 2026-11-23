@@ -897,6 +897,18 @@ private fun SetupCard(perms: List<Boolean>, onChanged: () -> Unit, collapsible: 
                             ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                         }
                     }
+                    val st by Store.state.collectAsState()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Debug log", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Write every WhatsApp notification Tempo sees into Activity (with seconds)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = cs.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = st.debug, onCheckedChange = { on -> Store.update(ctx) { it.copy(debug = on) } })
+                    }
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.secondaryContainer.copy(alpha = 0.6f))
                     ) {

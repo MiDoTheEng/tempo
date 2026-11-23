@@ -27,13 +27,25 @@ class WaListener : NotificationListenerService() {
         }
     }
 
+    private val ticker = object : Runnable {
+        override fun run() {
+            if (Store.get(this@WaListener).contacts.any { Engine.isSilent(it) }) sweep()
+            handler.postDelayed(this, 10_000)
+        }
+    }
+
     override fun onListenerConnected() {
         instance = this
+        Store.debug(this, "listener connected")
+        handler.removeCallbacks(ticker)
+        handler.postDelayed(ticker, 10_000)
         sweep()
         Engine.settle(this)
     }
 
     override fun onListenerDisconnected() {
+        Store.log(this, "Notification access disconnected — Tempo can't see WhatsApp until Android reconnects it")
+        handler.removeCallbacks(ticker)
         if (instance === this) instance = null
     }
 
@@ -45,7 +57,9 @@ class WaListener : NotificationListenerService() {
             return
         }
         var removed = 0
+        Store.debug(this, "sweep: ${active.size} WhatsApp notification(s) showing")
         for (sbn in active) {
+            Store.debug(this, "  sweep sees ${describe(sbn)}")
             val n = sbn.notification
             if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) continue
             if (n.extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)) continue
@@ -76,7 +90,22 @@ class WaListener : NotificationListenerService() {
         }
     }
 
+    private fun describe(sbn: StatusBarNotification): String {
+        val n = sbn.notification
+        val t = n.extras.getCharSequence(Notification.EXTRA_TITLE)
+        val f = n.flags
+        return "\"$t\" id=${sbn.id} tag=${sbn.tag} flags=0x${Integer.toHexString(f)}" +
+            (if (f and Notification.FLAG_GROUP_SUMMARY != 0) " SUMMARY" else "") +
+            (if (f and Notification.FLAG_ONGOING_EVENT != 0) " ONGOING" else "") +
+            (if (n.extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)) " GROUPCHAT" else "")
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        if (sbn.packageName in WA_PACKAGES) Store.debug(this, "WA removed: ${describe(sbn)}")
+    }
+
     private fun handle(sbn: StatusBarNotification) {
+        Store.debug(this, "WA posted: ${describe(sbn)}")
         val n = sbn.notification
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) {
             // Only tidy up the summary if we just hid a watched contact's notification.
@@ -106,7 +135,11 @@ class WaListener : NotificationListenerService() {
             style?.messages?.lastOrNull { it.person != null }?.person?.key,
             style?.messages?.lastOrNull { it.person != null }?.person?.uri,
         ).firstNotNullOfOrNull { numberFromWhatsAppId(it) }
-        val contact = Store.resolve(this, name, idNumber) ?: return
+        val contact = Store.resolve(this, name, idNumber)
+        if (contact == null) {
+            Store.debug(this, "  not watched: \"$name\" (number ${idNumber ?: "?"})")
+            return
+        }
         val key = nameKey(contact.name)
 
         // Keep WhatsApp's own tap and reply actions so Tempo's notification can reuse them.
@@ -176,6 +209,7 @@ class WaListener : NotificationListenerService() {
     private fun hide(sbn: StatusBarNotification, who: String) {
         val key = sbn.key
         cancelNotification(key)
+        Store.debug(this, "  hid $who's WhatsApp notification")
         handler.postDelayed({
             if (stillShowing(key)) {
                 cancelNotification(key)

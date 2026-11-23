@@ -47,6 +47,7 @@ data class Contact(
 )
 
 data class AppState(
+    val debug: Boolean = false,
     val contacts: List<Contact> = emptyList(),
     val recent: List<String> = emptyList(),
     val log: List<String> = emptyList(),
@@ -136,8 +137,12 @@ object Store {
     }
 
     fun log(ctx: Context, line: String) {
-        val stamp = SimpleDateFormat("dd MMM HH:mm", Locale.getDefault()).format(Date())
-        update(ctx) { it.copy(log = (listOf("$stamp  $line") + it.log).take(MAX_LOG)) }
+        val stamp = SimpleDateFormat(if (get(ctx).debug) "dd MMM HH:mm:ss" else "dd MMM HH:mm", Locale.getDefault()).format(Date())
+        update(ctx) { it.copy(log = (listOf("$stamp  $line") + it.log).take(if (it.debug) 150 else MAX_LOG)) }
+    }
+
+    fun debug(ctx: Context, line: String) {
+        if (get(ctx).debug) log(ctx, "🔧 $line")
     }
 
     fun addRecent(ctx: Context, name: String) {
@@ -201,6 +206,7 @@ object Store {
                     .put("arAt", c.lastAutoReplyAt))
             }
         })
+        put("debug", s.debug)
         put("recent", JSONArray(s.recent))
         put("log", JSONArray(s.log))
     }
@@ -228,7 +234,7 @@ object Store {
                 lastAutoReplyAt = c.optLong("arAt"),
             )
         }
-        return AppState(contacts, strings(o.optJSONArray("recent")), strings(o.optJSONArray("log")))
+        return AppState(o.optBoolean("debug", false), contacts, strings(o.optJSONArray("recent")), strings(o.optJSONArray("log")))
     }
 }
 
