@@ -56,7 +56,7 @@ class WaListener : NotificationListenerService() {
                 style?.messages?.lastOrNull { it.person != null }?.person?.key,
             ).firstNotNullOfOrNull { numberFromWhatsAppId(it) }
             val c = Store.resolve(this, cleanName(title), idNumber) ?: continue
-            cancelNotification(sbn.key)
+            hide(sbn, c.name)
             lastHiddenAt = System.currentTimeMillis()
             removed++
             if (Engine.isSilent(c)) Notifier.cancel(this, c.name)
@@ -138,7 +138,7 @@ class WaListener : NotificationListenerService() {
 
         // Hide WhatsApp's notification for this contact.
         lastHiddenAt = System.currentTimeMillis()
-        cancelNotification(sbn.key)
+        hide(sbn, contact.name)
         cancelLonelySummary(sbn.key)
 
         if (fresh.isEmpty()) return
@@ -149,6 +149,40 @@ class WaListener : NotificationListenerService() {
             else Engine.onTheirMessage(this, contact.name, f.msg)
         }
         Engine.settle(this)
+    }
+
+    private fun stillShowing(key: String) = try {
+        activeNotifications?.any { it.key == key } == true
+    } catch (_: Exception) {
+        false
+    }
+
+    /**
+     * Removes a WhatsApp notification and checks that it's really gone. If WhatsApp keeps it on
+     * screen, cancel again, and as a last resort snooze it for a minute (Tempo re-checks it then).
+     */
+    private fun hide(sbn: StatusBarNotification, who: String) {
+        val key = sbn.key
+        cancelNotification(key)
+        handler.postDelayed({
+            if (stillShowing(key)) {
+                cancelNotification(key)
+                handler.postDelayed({
+                    if (stillShowing(key)) {
+                        val f = sbn.notification.flags
+                        try {
+                            snoozeNotification(key, 60_000)
+                        } catch (_: Exception) {
+                        }
+                        Store.log(
+                            this,
+                            "WhatsApp kept $who's notification on screen (flags 0x${Integer.toHexString(f)}) — snoozed it" +
+                                if (stillShowing(key)) ", but it's STILL showing" else ""
+                        )
+                    }
+                }, 800)
+            }
+        }, 700)
     }
 
     /** If the only WhatsApp notification left is the group summary, remove it too. */
