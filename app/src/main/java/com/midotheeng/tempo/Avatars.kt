@@ -31,6 +31,8 @@ object Avatars {
 
     /** Set when Tempo opens a chat just to grab the photo: (name, deadline). */
     @Volatile var pendingCapture: Pair<String, Long>? = null
+    /** True when Tempo opened the chat by phone number, so the chat header name belongs to that contact. */
+    @Volatile var openedByNumber = false
 
     fun saveBitmap(ctx: Context, name: String, bmp: Bitmap) {
         val scaled = Bitmap.createScaledBitmap(bmp, SIZE, SIZE, true)

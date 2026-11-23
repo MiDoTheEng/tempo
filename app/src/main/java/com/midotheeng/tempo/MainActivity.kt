@@ -451,6 +451,15 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
                         color = if (c.number.isNotBlank()) cs.onSurfaceVariant else cs.secondary,
                         modifier = Modifier.clickable { editNumber = true }
                     )
+                    if (c.aliases.isNotEmpty()) {
+                        Text(
+                            "Also shows as: " + c.aliases.joinToString(", "),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = cs.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Spacer(Modifier.height(4.dp))
                     val (label, bg, fg) = when {
                         holding -> Triple("Holding ${c.held.size}", cs.secondaryContainer, cs.onSecondaryContainer)
@@ -467,7 +476,7 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("Refresh photo") }, onClick = { menu = false; fetchWhatsAppPhoto(ctx, c.name) })
+                        DropdownMenuItem(text = { Text("Refresh photo & name") }, onClick = { menu = false; fetchWhatsAppPhoto(ctx, c.name) })
                         DropdownMenuItem(text = { Text("Remove", color = cs.error) }, onClick = { menu = false; confirmRemove = true })
                     }
                 }
@@ -1197,12 +1206,14 @@ private fun fetchWhatsAppPhoto(ctx: Context, name: String) {
     val number = Store.find(ctx, name)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, name)
     if (number == null) {
         Toast.makeText(ctx, "Couldn't find $name's number — open their chat in WhatsApp once and the photo will be grabbed", Toast.LENGTH_LONG).show()
+        Avatars.openedByNumber = false
         Avatars.pendingCapture = name to (System.currentTimeMillis() + 60_000)
         return
     }
     val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull {
         ctx.packageManager.getLaunchIntentForPackage(it) != null
     } ?: return
+    Avatars.openedByNumber = true
     Avatars.pendingCapture = name to (System.currentTimeMillis() + 15_000)
     try {
         ctx.startActivity(

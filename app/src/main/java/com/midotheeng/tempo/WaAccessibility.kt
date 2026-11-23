@@ -72,6 +72,8 @@ class WaAccessibility : AccessibilityService() {
             if (now > pend.second) {
                 Avatars.pendingCapture = null
             } else {
+                // Opened by phone number: whatever name WhatsApp shows here is this same person.
+                if (Avatars.openedByNumber) Store.addAlias(this, pend.first, chat)
                 capturing = true
                 handler.postDelayed({ capturePhoto(pkg, pend.first) }, 900)
             }
@@ -83,7 +85,7 @@ class WaAccessibility : AccessibilityService() {
             if (now > ar.third) {
                 AutoReply.pending = null
                 if (!sending) AutoReply.askToSend(this, ar.first, ar.second)
-            } else if (nameKey(ar.first) == nameKey(chat)) {
+            } else if (nameKey(ar.first) == nameKey(chat) || Store.find(this, chat)?.let { nameKey(it.name) == nameKey(ar.first) } == true) {
                 openedByTempo = true
                 if (!sending) {
                     sending = true

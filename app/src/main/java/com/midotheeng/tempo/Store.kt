@@ -20,6 +20,8 @@ data class Contact(
     val number: String = "",
     /** WhatsApp's internal chat ids (notification tags) seen for this person. */
     val waTags: List<String> = emptyList(),
+    /** Other names WhatsApp shows for this person (e.g. an old saved name). */
+    val aliases: List<String> = emptyList(),
     val mode: String = MODE_MIRROR,
     val fixedMinutes: Int = 60,
     val capMinutes: Int = 12 * 60,
@@ -80,7 +82,18 @@ object Store {
 
     fun find(ctx: Context, name: String): Contact? {
         val k = nameKey(name)
-        return get(ctx).contacts.firstOrNull { nameKey(it.name) == k }
+        val all = get(ctx).contacts
+        return all.firstOrNull { nameKey(it.name) == k } ?: all.firstOrNull { c -> c.aliases.any { nameKey(it) == k } }
+    }
+
+    /** Remember that WhatsApp shows [contactName] as [alias] too. */
+    fun addAlias(ctx: Context, contactName: String, alias: String) {
+        val a = cleanName(alias)
+        if (a.isBlank() || nameKey(a) == nameKey(contactName)) return
+        val c = find(ctx, contactName) ?: return
+        if (c.aliases.any { nameKey(it) == nameKey(a) }) return
+        updateContact(ctx, c.name) { it.copy(aliases = (it.aliases + a).takeLast(5)) }
+        log(ctx, "${c.name} shows as \"$a\" in WhatsApp — linked")
     }
 
     /**
@@ -225,6 +238,7 @@ object Store {
                     .put("name", c.name)
                     .put("num", c.number)
                     .put("tags", JSONArray(c.waTags))
+                    .put("aliases", JSONArray(c.aliases))
                     .put("mode", c.mode)
                     .put("fixed", c.fixedMinutes)
                     .put("cap", c.capMinutes)
@@ -254,6 +268,7 @@ object Store {
                 name = c.getString("name"),
                 number = c.optString("num", ""),
                 waTags = strings(c.optJSONArray("tags")),
+                aliases = strings(c.optJSONArray("aliases")),
                 mode = c.optString("mode", MODE_MIRROR),
                 fixedMinutes = c.optInt("fixed", 60),
                 capMinutes = c.optInt("cap", 12 * 60),
