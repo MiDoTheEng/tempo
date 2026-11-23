@@ -107,7 +107,10 @@ object Store {
             // Reverse check: which name is each watched number saved under in your contacts?
             ?: watchedWithNumbers.firstOrNull { c -> nameForNumberCached(ctx, c.number)?.let { nameKey(it) == nameKey(name) } == true }
         if (match == null) {
-            debug(ctx, "  no match for \"$name\" (numbers tried: ${candidates.joinToString().ifEmpty { "none" }})")
+            val noPerm = androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_CONTACTS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            debug(ctx, "  no match for \"$name\" (numbers tried: ${candidates.joinToString().ifEmpty { "none" }})" +
+                if (noPerm) " — Tempo can't read contacts (allow it in Setup)" else "")
             return null
         }
         val newName = cleanName(name)

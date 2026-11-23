@@ -187,7 +187,7 @@ private fun Home() {
             value = System.currentTimeMillis()
         }
     }
-    val perms = remember(refresh) { listOf(listenerOn(ctx), accessibilityOn(ctx), notifOn(ctx), exactOn(ctx), batteryOn(ctx)) }
+    val perms = remember(refresh) { listOf(listenerOn(ctx), accessibilityOn(ctx), notifOn(ctx), exactOn(ctx), batteryOn(ctx), contactsOn(ctx)) }
     val allSet = perms.all { it }
     var showAdd by remember { mutableStateOf(false) }
     var setupOpen by remember { mutableStateOf(false) }
@@ -901,6 +901,17 @@ private fun SetupCard(perms: List<Boolean>, onChanged: () -> Unit, collapsible: 
                         } catch (_: Exception) {
                             ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                         }
+                    }
+                    val contactsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+                        Avatars.refresh()
+                        onChanged()
+                    }
+                    SetupStep(
+                        6, "Contacts",
+                        "Recognise people by phone number, even when WhatsApp shows their saved name.",
+                        perms[5]
+                    ) {
+                        contactsLauncher.launch(Manifest.permission.READ_CONTACTS)
                     }
                     val st by Store.state.collectAsState()
                     Row(verticalAlignment = Alignment.CenterVertically) {
