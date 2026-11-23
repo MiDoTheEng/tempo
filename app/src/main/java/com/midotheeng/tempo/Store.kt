@@ -103,7 +103,13 @@ object Store {
             name.filter { it.isDigit() }.takeIf { it.length >= 8 && name.none { ch -> ch.isLetter() } },
             lookupNumberCached(ctx, name)
         )
-        val match = watchedWithNumbers.firstOrNull { c -> candidates.any { sameNumber(it, c.number) } } ?: return null
+        val match = watchedWithNumbers.firstOrNull { c -> candidates.any { sameNumber(it, c.number) } }
+            // Reverse check: which name is each watched number saved under in your contacts?
+            ?: watchedWithNumbers.firstOrNull { c -> nameForNumberCached(ctx, c.number)?.let { nameKey(it) == nameKey(name) } == true }
+        if (match == null) {
+            debug(ctx, "  no match for \"$name\" (numbers tried: ${candidates.joinToString().ifEmpty { "none" }})")
+            return null
+        }
         val newName = cleanName(name)
         Store.log(ctx, "${match.name} is now called $newName in WhatsApp — updated")
         Avatars.rename(ctx, match.name, newName)
@@ -112,13 +118,36 @@ object Store {
         return find(ctx, newName)
     }
 
+    private val reverseCache = HashMap<String, Pair<String?, Long>>()
+
+    /** The name a phone number is saved under in your contacts (null if not saved). */
+    private fun nameForNumberCached(ctx: Context, number: String): String? {
+        val now = System.currentTimeMillis()
+        synchronized(reverseCache) { reverseCache[number]?.let { if (now - it.second < 10 * 60_000) return it.first } }
+        val n = try {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.READ_CONTACTS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED) null
+            else ctx.contentResolver.query(
+                android.net.Uri.withAppendedPath(
+                    android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                    android.net.Uri.encode("+$number")
+                ),
+                arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null
+            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        } catch (_: Exception) {
+            null
+        }
+        synchronized(reverseCache) { reverseCache[number] = n to now }
+        return n
+    }
+
     private val lookupCache = HashMap<String, Pair<String?, Long>>()
 
     private fun lookupNumberCached(ctx: Context, name: String): String? {
         val k = nameKey(name)
         val now = System.currentTimeMillis()
         synchronized(lookupCache) {
-            lookupCache[k]?.let { if (now - it.second < 10 * 60_000) return it.first }
+            lookupCache[k]?.let { if (now - it.second < (if (it.first == null) 60_000 else 10 * 60_000)) return it.first }
         }
         val n = Avatars.whatsAppNumber(ctx, name)
         synchronized(lookupCache) { lookupCache[k] = n to now }
