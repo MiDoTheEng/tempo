@@ -521,15 +521,15 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
                 ValueStepper(
                     label = "Longest hold",
                     value = fmtDuration(c.capMinutes * 60_000L),
-                    onMinus = { Store.updateContact(ctx, c.name) { it.copy(capMinutes = (it.capMinutes - 60).coerceAtLeast(60)) } },
-                    onPlus = { Store.updateContact(ctx, c.name) { it.copy(capMinutes = (it.capMinutes + 60).coerceAtMost(72 * 60)) } }
+                    onMinus = { Store.updateContact(ctx, c.name) { it.copy(capMinutes = stepDown(it.capMinutes)) } },
+                    onPlus = { Store.updateContact(ctx, c.name) { it.copy(capMinutes = stepUp(it.capMinutes)) } }
                 )
             } else {
                 ValueStepper(
                     label = "Hold for",
                     value = fmtDuration(c.fixedMinutes * 60_000L),
-                    onMinus = { Store.updateContact(ctx, c.name) { it.copy(fixedMinutes = (it.fixedMinutes - 15).coerceAtLeast(15)) } },
-                    onPlus = { Store.updateContact(ctx, c.name) { it.copy(fixedMinutes = (it.fixedMinutes + 15).coerceAtMost(72 * 60)) } }
+                    onMinus = { Store.updateContact(ctx, c.name) { it.copy(fixedMinutes = stepDown(it.fixedMinutes)) } },
+                    onPlus = { Store.updateContact(ctx, c.name) { it.copy(fixedMinutes = stepUp(it.fixedMinutes)) } }
                 )
             }
             if (c.lastWaitMs > 0) {
@@ -817,6 +817,16 @@ private fun TimingPanel(c: Contact, now: Long) {
         )
     }
 }
+
+/** Fine steps for short holds, bigger ones for long holds: 1 min … 72 h. */
+private fun stepSize(m: Int) = when {
+    m < 10 -> 1
+    m < 30 -> 5
+    m < 120 -> 15
+    else -> 60
+}
+private fun stepUp(m: Int) = (m + stepSize(m)).coerceAtMost(72 * 60)
+private fun stepDown(m: Int) = (m - stepSize((m - 1).coerceAtLeast(1))).coerceAtLeast(1)
 
 @Composable
 private fun ValueStepper(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit) {
