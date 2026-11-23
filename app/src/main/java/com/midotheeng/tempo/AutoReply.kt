@@ -54,6 +54,8 @@ object AutoReply {
         val now = System.currentTimeMillis()
         Store.updateContact(ctx, name) { it.copy(lastMySend = maxOf(it.lastMySend, now), lastAutoReplyAt = now) }
         Store.log(ctx, "Auto-replied to $name ($how) — timing their answer")
+        // WhatsApp often re-posts its notification after a reply; clear it again.
+        WaListener.sweepSoon()
     }
 
     fun askToSend(ctx: Context, name: String, text: String, number: String? = Avatars.whatsAppNumber(ctx, name)) {

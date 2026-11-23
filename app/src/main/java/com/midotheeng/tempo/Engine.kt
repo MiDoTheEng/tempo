@@ -75,7 +75,10 @@ object Engine {
 
         if (quiet) {
             val c = Store.find(ctx, name) ?: return
-            if (isSilent(c)) Store.updateContact(ctx, name) { it.copy(shown = emptyList()) }
+            if (isSilent(c)) {
+                Store.updateContact(ctx, name) { it.copy(shown = emptyList()) }
+                Notifier.cancel(ctx, c.name)
+            }
             else Notifier.post(ctx, c, alert = false)
         }
     }
@@ -156,6 +159,7 @@ object Engine {
         due.forEach { d ->
             if (nameKey(d.name) in silent) {
                 Store.updateContact(ctx, d.name) { it.copy(shown = emptyList()) }
+                Notifier.cancel(ctx, d.name)
                 Store.log(ctx, "${d.contact.shown.size} message(s) from ${d.name} — silent, no notification")
             } else {
                 Notifier.post(ctx, d.contact)

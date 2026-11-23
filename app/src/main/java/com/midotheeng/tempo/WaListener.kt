@@ -15,8 +15,56 @@ class WaListener : NotificationListenerService() {
 
     private var lastHiddenAt = 0L
 
+    companion object {
+        @Volatile var instance: WaListener? = null
+        private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
+        /** Run a clean-up of leftover WhatsApp notifications a few times over the next half minute. */
+        fun sweepSoon() {
+            listOf(1_500L, 4_000L, 10_000L, 30_000L).forEach { d ->
+                handler.postDelayed({ instance?.sweep() }, d)
+            }
+        }
+    }
+
     override fun onListenerConnected() {
+        instance = this
+        sweep()
         Engine.settle(this)
+    }
+
+    override fun onListenerDisconnected() {
+        if (instance === this) instance = null
+    }
+
+    /** Removes any WhatsApp notification still showing for someone you watch. */
+    fun sweep() {
+        val active = try {
+            activeNotifications?.filter { it.packageName in WA_PACKAGES } ?: return
+        } catch (_: Exception) {
+            return
+        }
+        var removed = 0
+        for (sbn in active) {
+            val n = sbn.notification
+            if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) continue
+            if (n.extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)) continue
+            val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(n)
+            val title = (style?.conversationTitle ?: n.extras.getCharSequence(Notification.EXTRA_TITLE))?.toString() ?: continue
+            val idNumber = listOfNotNull(
+                if (android.os.Build.VERSION.SDK_INT >= 29) n.shortcutId else null,
+                style?.messages?.lastOrNull { it.person != null }?.person?.key,
+            ).firstNotNullOfOrNull { numberFromWhatsAppId(it) }
+            val c = Store.resolve(this, cleanName(title), idNumber) ?: continue
+            cancelNotification(sbn.key)
+            lastHiddenAt = System.currentTimeMillis()
+            removed++
+            if (Engine.isSilent(c)) Notifier.cancel(this, c.name)
+        }
+        if (removed > 0) {
+            Store.log(this, "Cleared $removed leftover WhatsApp notification(s)")
+            cancelLonelySummary(null)
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
@@ -110,9 +158,16 @@ class WaListener : NotificationListenerService() {
         } catch (_: Exception) {
             return
         }
-        val children = wa.filter { it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0 }
-        if (children.isEmpty()) {
-            wa.forEach { cancelNotification(it.key) }
+        val summaries = wa.filter { it.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0 }
+        for (sum in summaries) {
+            // A summary is only "lonely" if no real message notification is left in its group.
+            val group = sum.notification.group
+            val children = wa.filter {
+                it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0 &&
+                    it.notification.group == group &&
+                    it.notification.flags and Notification.FLAG_ONGOING_EVENT == 0
+            }
+            if (children.isEmpty()) cancelNotification(sum.key)
         }
     }
 }

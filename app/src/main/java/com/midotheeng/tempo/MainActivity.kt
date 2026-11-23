@@ -170,6 +170,7 @@ private fun Home() {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         refresh++
         Engine.settle(ctx)
+        WaListener.instance?.sweep()
         // Remember numbers for people added before numbers were saved.
         Store.get(ctx).contacts.filter { it.number.isBlank() }.forEach { c ->
             Avatars.whatsAppNumber(ctx, c.name)?.let { n -> Store.updateContact(ctx, c.name) { it.copy(number = n) } }
