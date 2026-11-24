@@ -40,6 +40,7 @@ object AutoReply {
         val number = Store.find(ctx, name)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, name)
         if (number != null && unlocked(ctx) && accessibilityOn(ctx)) {
             pending = Triple(name, text, now + 20_000)
+            watchPending(ctx)
             try {
                 ctx.startActivity(chatIntent(ctx, number, text).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 return
@@ -85,6 +86,7 @@ object AutoReply {
                 return
             }
             pending = Triple(name, text, now + 20_000)
+            watchPending(ctx)
             try {
                 ctx.startActivity(chatIntent(ctx, number, text).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 return
@@ -94,6 +96,18 @@ object AutoReply {
         }
         scheduledInFlight -= key
         askToSend(ctx, name, text, number)
+    }
+
+    /** If WhatsApp never got to "Send" within 20 s, fall back to a tap-to-send notification. */
+    private fun watchPending(ctx: Context) {
+        val job = pending ?: return
+        handler.postDelayed({
+            if (pending === job) {
+                pending = null
+                Store.log(ctx, "Couldn't tap Send in WhatsApp for ${job.first}")
+                askToSend(ctx, job.first, job.second)
+            }
+        }, 21_000)
     }
 
     /** Phone unlocked: send whatever scheduled messages were waiting, one every few seconds. */

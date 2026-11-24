@@ -48,7 +48,8 @@ class WaAccessibility : AccessibilityService() {
         val src = event.source
         val id = src?.viewIdResourceName ?: ""
         val desc = (event.contentDescription ?: src?.contentDescription)?.toString() ?: ""
-        val isSend = id.endsWith(":id/send") || desc.equals("Send", ignoreCase = true) || desc == "إرسال"
+        val isSend = id.endsWith(":id/send") || id.endsWith(":id/send_container") ||
+            desc.equals("Send", ignoreCase = true) || desc == "إرسال" || desc == "ارسال"
         if (!isSend) return
         val chat = currentChatName(pkg) ?: return
         val c = Store.resolve(this, chat) ?: return
@@ -85,7 +86,10 @@ class WaAccessibility : AccessibilityService() {
             if (now > ar.third) {
                 AutoReply.pending = null
                 if (!sending) AutoReply.askToSend(this, ar.first, ar.second)
-            } else if (nameKey(ar.first) == nameKey(chat) || Store.find(this, chat)?.let { nameKey(it.name) == nameKey(ar.first) } == true) {
+            } else {
+                // Tempo just opened this chat by phone number, so it's the right one even if
+                // WhatsApp shows the name differently (e.g. "+20 10 …" or a saved name).
+                if (nameKey(ar.first) != nameKey(chat)) Store.debug(this, "auto-send: chat shows \"$chat\" for ${ar.first}")
                 openedByTempo = true
                 if (!sending) {
                     sending = true
@@ -225,10 +229,36 @@ class WaAccessibility : AccessibilityService() {
         return best
     }
 
-    private fun tapSend(pkg: String, name: String, text: String) {
-        val root = rootInActiveWindow
-        val send = root?.findAccessibilityNodeInfosByViewId("$pkg:id/send")?.firstOrNull()
+    /** WhatsApp's Send button: by id first, then by its "Send" label, climbing to a clickable parent. */
+    private fun findSend(pkg: String): AccessibilityNodeInfo? {
+        val root = rootInActiveWindow ?: return null
+        for (id in listOf("send", "send_container", "conversation_send", "send_btn")) {
+            root.findAccessibilityNodeInfosByViewId("$pkg:id/$id")?.firstOrNull()?.let { return it }
+        }
+        val labels = setOf("send", "إرسال", "ارسال")
+        val queue = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+        while (queue.isNotEmpty()) {
+            val n = queue.removeFirst()
+            val d = n.contentDescription?.toString()?.trim()?.lowercase()
+            if (d != null && d in labels) {
+                var c: AccessibilityNodeInfo? = n
+                while (c != null && !c.isClickable) c = c.parent
+                return c ?: n
+            }
+            for (i in 0 until n.childCount) n.getChild(i)?.let { queue.add(it) }
+        }
+        return null
+    }
+
+    private fun tapSend(pkg: String, name: String, text: String, tries: Int = 4) {
+        val send = findSend(pkg)
         val ok = send != null && send.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        if (!ok && tries > 1) {
+            // The chat may still be loading — try again shortly.
+            handler.postDelayed({ tapSend(pkg, name, text, tries - 1) }, 700)
+            return
+        }
+        Store.debug(this, "auto-send: Send button ${if (send == null) "not found" else if (ok) "tapped" else "didn't respond"}")
         AutoReply.pending = null
         if (ok) {
             AutoReply.done(this, name, "sent in WhatsApp")
