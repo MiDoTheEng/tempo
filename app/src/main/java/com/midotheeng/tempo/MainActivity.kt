@@ -595,8 +595,10 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
                         singleLine = true,
                         placeholder = { Text("+971 50 123 4567") },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Done
                         ),
+                        keyboardActions = closeOnDone().second,
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -769,6 +771,7 @@ private fun AutoReplyBox(c: Contact, now: Long) {
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
+                    HideKeyboardButton()
                 }
             },
             confirmButton = {
@@ -1085,11 +1088,14 @@ private fun AddSheet(state: AppState, onDismiss: () -> Unit) {
     ) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text("Add someone", style = MaterialTheme.typography.headlineSmall)
+            HideKeyboardButton()
             Spacer(Modifier.height(14.dp))
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
                 singleLine = true,
                 placeholder = { Text("Search, name, or +country number") },
+                keyboardOptions = closeOnDone().first,
+                keyboardActions = closeOnDone().second,
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -1467,6 +1473,7 @@ private fun NewScheduleSheet(state: AppState, onClose: () -> Unit) {
     ) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text("New scheduled message", style = MaterialTheme.typography.headlineSmall)
+            HideKeyboardButton()
             Spacer(Modifier.height(14.dp))
 
             val name = toName
@@ -1563,6 +1570,8 @@ private fun RecipientPicker(state: AppState, onPick: (String) -> Unit) {
         value = query, onValueChange = { query = it },
         singleLine = true,
         placeholder = { Text("To: search, name, or +country number") },
+                keyboardOptions = closeOnDone().first,
+                keyboardActions = closeOnDone().second,
         leadingIcon = { Icon(Icons.Filled.Search, null) },
         shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth()
@@ -1613,4 +1622,35 @@ private fun RecipientPicker(state: AppState, onPick: (String) -> Unit) {
             )
         }
     }
+}
+
+/** Shows a "Hide keyboard" button while the keyboard is open. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HideKeyboardButton() {
+    val visible = WindowInsets.isImeVisible
+    val kb = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val fm = androidx.compose.ui.platform.LocalFocusManager.current
+    AnimatedVisibility(visible) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.End) {
+            FilledTonalButton(
+                onClick = { kb?.hide(); fm.clearFocus() },
+                contentPadding = PaddingValues(horizontal = 14.dp)
+            ) {
+                Icon(Icons.Filled.KeyboardArrowDown, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Hide keyboard")
+            }
+        }
+    }
+}
+
+/** Keyboard "Done"/"Search" key closes the keyboard. */
+@Composable
+private fun closeOnDone(): Pair<androidx.compose.foundation.text.KeyboardOptions, androidx.compose.foundation.text.KeyboardActions> {
+    val kb = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val fm = androidx.compose.ui.platform.LocalFocusManager.current
+    val close: androidx.compose.foundation.text.KeyboardActionScope.() -> Unit = { kb?.hide(); fm.clearFocus() }
+    return androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done) to
+        androidx.compose.foundation.text.KeyboardActions(onDone = close, onSearch = close, onGo = close)
 }
