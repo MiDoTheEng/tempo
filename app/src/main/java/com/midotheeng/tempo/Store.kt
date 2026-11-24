@@ -15,7 +15,7 @@ const val MODE_FIXED = "fixed"
 data class Msg(val text: String, val time: Long)
 
 /** A message Tempo sends for you at a set time (optionally every day). */
-data class Scheduled(val id: Long, val text: String, val at: Long, val daily: Boolean)
+data class Scheduled(val id: Long, val text: String, val at: Long, val daily: Boolean, val track: Boolean = true)
 
 data class Contact(
     val name: String,
@@ -26,6 +26,8 @@ data class Contact(
     /** Other names WhatsApp shows for this person (e.g. an old saved name). */
     val aliases: List<String> = emptyList(),
     val scheduled: List<Scheduled> = emptyList(),
+    /** When Tempo last sent a message for you that should NOT start the reply timer. Not saved. */
+    val untrackedSendAt: Long = 0L,
     val mode: String = MODE_MIRROR,
     val fixedMinutes: Int = 60,
     val capMinutes: Int = 12 * 60,
@@ -244,7 +246,7 @@ object Store {
                     .put("tags", JSONArray(c.waTags))
                     .put("aliases", JSONArray(c.aliases))
                     .put("sched", JSONArray().apply {
-                        c.scheduled.forEach { x -> put(JSONObject().put("id", x.id).put("t", x.text).put("at", x.at).put("d", x.daily)) }
+                        c.scheduled.forEach { x -> put(JSONObject().put("id", x.id).put("t", x.text).put("at", x.at).put("d", x.daily).put("tr", x.track)) }
                     })
                     .put("mode", c.mode)
                     .put("fixed", c.fixedMinutes)
@@ -279,7 +281,7 @@ object Store {
                 scheduled = c.optJSONArray("sched")?.let { a ->
                     (0 until a.length()).map { i ->
                         val x = a.getJSONObject(i)
-                        Scheduled(x.optLong("id"), x.optString("t"), x.optLong("at"), x.optBoolean("d"))
+                        Scheduled(x.optLong("id"), x.optString("t"), x.optLong("at"), x.optBoolean("d"), x.optBoolean("tr", true))
                     }
                 } ?: emptyList(),
                 mode = c.optString("mode", MODE_MIRROR),

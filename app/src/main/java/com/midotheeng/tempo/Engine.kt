@@ -89,6 +89,8 @@ object Engine {
     fun onMySend(ctx: Context, name: String, time: Long, source: String) {
         val c = Store.find(ctx, name) ?: return
         if (time <= c.lastMySend) return
+        // A scheduled message sent with "Time their reply" off: ignore it completely.
+        if (c.untrackedSendAt > 0 && kotlin.math.abs(time - c.untrackedSendAt) < 60_000) return
         // Tempo's own auto-reply showing up in WhatsApp: restart the timer, but you haven't read anything.
         if (c.lastAutoReplyAt > 0 && kotlin.math.abs(time - c.lastAutoReplyAt) < 60_000) {
             Store.updateContact(ctx, name) { it.copy(lastMySend = maxOf(it.lastMySend, time)) }
@@ -183,7 +185,7 @@ object Engine {
                 }
             })
         }
-        dueSched.forEach { (name, x) -> AutoReply.sendScheduled(ctx, name, x.text) }
+        dueSched.forEach { (name, x) -> AutoReply.sendScheduled(ctx, name, x.text, x.track) }
         Alarms.scheduleNext(ctx)
     }
 }

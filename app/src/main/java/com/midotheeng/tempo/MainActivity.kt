@@ -649,7 +649,8 @@ private fun ScheduledBox(c: Contact, now: Long) {
                 Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                     Text(x.text, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        (if (x.daily) "Every day · next " else "") + fmtWhen(x.at) + " · in " + shortDur(x.at - now),
+                        (if (x.daily) "Every day · next " else "") + fmtWhen(x.at) + " · in " + shortDur(x.at - now) +
+                            if (x.track) "" else " · not timed",
                         style = MaterialTheme.typography.labelSmall,
                         color = cs.secondary
                     )
@@ -672,6 +673,7 @@ private fun ScheduleDialog(c: Contact, onClose: () -> Unit) {
     var text by remember { mutableStateOf("") }
     var at by remember { mutableLongStateOf(System.currentTimeMillis() + 30 * 60_000L) }
     var daily by remember { mutableStateOf(false) }
+    var track by remember { mutableStateOf(true) }
 
     fun pickDateTime() {
         val cal = java.util.Calendar.getInstance().apply { timeInMillis = at }
@@ -717,6 +719,17 @@ private fun ScheduleDialog(c: Contact, onClose: () -> Unit) {
                     Text("Every day at this time", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     Switch(checked = daily, onCheckedChange = { daily = it })
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Time their reply", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            if (track) "Their answer is timed and held like usual" else "Just send it — their answer isn't timed",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = cs.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = track, onCheckedChange = { track = it })
+                }
             }
         },
         confirmButton = {
@@ -724,7 +737,7 @@ private fun ScheduleDialog(c: Contact, onClose: () -> Unit) {
                 enabled = text.isNotBlank() && at > System.currentTimeMillis(),
                 onClick = {
                     Store.updateContact(ctx, c.name) {
-                        it.copy(scheduled = it.scheduled + Scheduled(System.currentTimeMillis(), text.trim(), at, daily))
+                        it.copy(scheduled = it.scheduled + Scheduled(System.currentTimeMillis(), text.trim(), at, daily, track))
                     }
                     Store.log(ctx, "Scheduled a message to ${c.name} for ${fmtWhen(at)}" + if (daily) " (every day)" else "")
                     Alarms.scheduleNext(ctx)

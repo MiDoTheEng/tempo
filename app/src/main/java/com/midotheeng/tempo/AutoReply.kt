@@ -51,14 +51,21 @@ object AutoReply {
     }
 
     private val scheduledInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-    private val waitingForUnlock = java.util.concurrent.ConcurrentLinkedQueue<Pair<String, String>>()
+    private val waitingForUnlock = java.util.concurrent.ConcurrentLinkedQueue<Triple<String, String, Boolean>>()
+    private val untrackedInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
     /** Sends a scheduled message. If the phone is locked and there's no other way, waits for you to unlock. */
-    fun sendScheduled(ctx: Context, name: String, text: String) {
+    fun sendScheduled(ctx: Context, name: String, text: String, track: Boolean = true) {
         val now = System.currentTimeMillis()
         val key = nameKey(name)
-        Store.updateContact(ctx, name) { it.copy(lastAutoReplyAt = now) }
+        if (track) {
+            Store.updateContact(ctx, name) { it.copy(lastAutoReplyAt = now) }
+            untrackedInFlight -= key
+        } else {
+            Store.updateContact(ctx, name) { it.copy(untrackedSendAt = now) }
+            untrackedInFlight += key
+        }
         scheduledInFlight += key
 
         Notifier.replyActions[key]?.let { action ->
@@ -70,7 +77,7 @@ object AutoReply {
         val number = Store.find(ctx, name)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, name)
         if (number != null && accessibilityOn(ctx)) {
             if (!unlocked(ctx) || pending != null) {
-                waitingForUnlock += name to text
+                waitingForUnlock += Triple(name, text, track)
                 Store.log(ctx, "Scheduled message to $name is ready — it sends as soon as you unlock the phone")
                 return
             }
@@ -90,14 +97,21 @@ object AutoReply {
     fun onUnlocked(ctx: Context) {
         var delay = 1_500L
         while (true) {
-            val (name, text) = waitingForUnlock.poll() ?: break
-            handler.postDelayed({ sendScheduled(ctx, name, text) }, delay)
+            val (name, text, track) = waitingForUnlock.poll() ?: break
+            handler.postDelayed({ sendScheduled(ctx, name, text, track) }, delay)
             delay += 9_000L
         }
     }
 
     fun done(ctx: Context, name: String, how: String) {
         val now = System.currentTimeMillis()
+        if (untrackedInFlight.remove(nameKey(name))) {
+            scheduledInFlight.remove(nameKey(name))
+            Store.updateContact(ctx, name) { it.copy(untrackedSendAt = now) }
+            Store.log(ctx, "Sent scheduled message to $name ($how) — not timing their reply")
+            WaListener.sweepSoon()
+            return
+        }
         Store.updateContact(ctx, name) { it.copy(lastMySend = maxOf(it.lastMySend, now), lastAutoReplyAt = now) }
         if (scheduledInFlight.remove(nameKey(name))) Store.log(ctx, "Sent scheduled message to $name ($how) — timing their answer")
         else Store.log(ctx, "Auto-replied to $name ($how) — timing their answer")
