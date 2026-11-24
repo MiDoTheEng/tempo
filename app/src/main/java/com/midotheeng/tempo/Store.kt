@@ -14,6 +14,9 @@ const val MODE_FIXED = "fixed"
 
 data class Msg(val text: String, val time: Long)
 
+/** A message Tempo sends for you at a set time (optionally every day). */
+data class Scheduled(val id: Long, val text: String, val at: Long, val daily: Boolean)
+
 data class Contact(
     val name: String,
     /** WhatsApp phone number, digits only — used to recognise them if their name changes. */
@@ -22,6 +25,7 @@ data class Contact(
     val waTags: List<String> = emptyList(),
     /** Other names WhatsApp shows for this person (e.g. an old saved name). */
     val aliases: List<String> = emptyList(),
+    val scheduled: List<Scheduled> = emptyList(),
     val mode: String = MODE_MIRROR,
     val fixedMinutes: Int = 60,
     val capMinutes: Int = 12 * 60,
@@ -239,6 +243,9 @@ object Store {
                     .put("num", c.number)
                     .put("tags", JSONArray(c.waTags))
                     .put("aliases", JSONArray(c.aliases))
+                    .put("sched", JSONArray().apply {
+                        c.scheduled.forEach { x -> put(JSONObject().put("id", x.id).put("t", x.text).put("at", x.at).put("d", x.daily)) }
+                    })
                     .put("mode", c.mode)
                     .put("fixed", c.fixedMinutes)
                     .put("cap", c.capMinutes)
@@ -269,6 +276,12 @@ object Store {
                 number = c.optString("num", ""),
                 waTags = strings(c.optJSONArray("tags")),
                 aliases = strings(c.optJSONArray("aliases")),
+                scheduled = c.optJSONArray("sched")?.let { a ->
+                    (0 until a.length()).map { i ->
+                        val x = a.getJSONObject(i)
+                        Scheduled(x.optLong("id"), x.optString("t"), x.optLong("at"), x.optBoolean("d"))
+                    }
+                } ?: emptyList(),
                 mode = c.optString("mode", MODE_MIRROR),
                 fixedMinutes = c.optInt("fixed", 60),
                 capMinutes = c.optInt("cap", 12 * 60),
@@ -340,4 +353,9 @@ fun normalizeNumber(ctx: Context, raw: String): String? {
     if (e164 != null) return e164.filter { it.isDigit() }
     // Already international without "+" (e.g. 9715…)?
     return t.filter { it.isDigit() }.takeIf { !t.startsWith("0") && it.length >= 10 }
+}
+
+fun fmtWhen(ms: Long): String {
+    val sameDay = SimpleDateFormat("yyyyMMdd", Locale.ROOT).let { it.format(Date(ms)) == it.format(Date()) }
+    return SimpleDateFormat(if (sameDay) "'today' HH:mm" else "EEE d MMM, HH:mm", Locale.getDefault()).format(Date(ms))
 }

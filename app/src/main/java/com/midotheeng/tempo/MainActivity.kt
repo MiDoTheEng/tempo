@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -542,6 +543,8 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
             }
             Spacer(Modifier.height(10.dp))
             AutoReplyBox(c, now)
+            Spacer(Modifier.height(10.dp))
+            ScheduledBox(c, now)
         }
     }
 
@@ -611,6 +614,126 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } }
         )
     }
+}
+
+@Composable
+private fun ScheduledBox(c: Contact, now: Long) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var adding by remember { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh)
+            .padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Scheduled messages", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                Text(
+                    if (c.scheduled.isEmpty()) "None" else "${c.scheduled.size} planned",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            FilledTonalButton(onClick = { adding = true }, contentPadding = PaddingValues(horizontal = 14.dp)) {
+                Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Schedule")
+            }
+        }
+        c.scheduled.sortedBy { it.at }.forEach { x ->
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surface).padding(start = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                    Text(x.text, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        (if (x.daily) "Every day · next " else "") + fmtWhen(x.at) + " · in " + shortDur(x.at - now),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = cs.secondary
+                    )
+                }
+                IconButton(onClick = {
+                    Store.updateContact(ctx, c.name) { it.copy(scheduled = it.scheduled.filter { s -> s.id != x.id }) }
+                    Alarms.scheduleNext(ctx)
+                }) { Icon(Icons.Filled.Close, "Cancel", tint = cs.onSurfaceVariant) }
+            }
+        }
+    }
+    if (adding) ScheduleDialog(c, onClose = { adding = false })
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ScheduleDialog(c: Contact, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var text by remember { mutableStateOf("") }
+    var at by remember { mutableLongStateOf(System.currentTimeMillis() + 30 * 60_000L) }
+    var daily by remember { mutableStateOf(false) }
+
+    fun pickDateTime() {
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = at }
+        android.app.DatePickerDialog(ctx, { _, y, m, d ->
+            android.app.TimePickerDialog(ctx, { _, h, min ->
+                val pick = java.util.Calendar.getInstance().apply {
+                    set(y, m, d, h, min, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }
+                at = pick.timeInMillis
+            }, cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE),
+                android.text.format.DateFormat.is24HourFormat(ctx)).show()
+        }, cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH), cal.get(java.util.Calendar.DAY_OF_MONTH)).apply {
+            datePicker.minDate = System.currentTimeMillis() - 1000
+        }.show()
+    }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Message to ${c.name}") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it },
+                    minLines = 2,
+                    placeholder = { Text("Your message") },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("When", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("In 5 min" to 5, "In 30 min" to 30, "In 1 h" to 60, "In 3 h" to 180).forEach { (label, m) ->
+                        AssistChip(onClick = { at = System.currentTimeMillis() + m * 60_000L }, label = { Text(label) })
+                    }
+                    AssistChip(onClick = { pickDateTime() }, label = { Text("Pick date & time") })
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Sends ${fmtWhen(at)}", style = MaterialTheme.typography.titleSmall, color = cs.secondary)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Every day at this time", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Switch(checked = daily, onCheckedChange = { daily = it })
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = text.isNotBlank() && at > System.currentTimeMillis(),
+                onClick = {
+                    Store.updateContact(ctx, c.name) {
+                        it.copy(scheduled = it.scheduled + Scheduled(System.currentTimeMillis(), text.trim(), at, daily))
+                    }
+                    Store.log(ctx, "Scheduled a message to ${c.name} for ${fmtWhen(at)}" + if (daily) " (every day)" else "")
+                    Alarms.scheduleNext(ctx)
+                    onClose()
+                }
+            ) { Text("Schedule") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

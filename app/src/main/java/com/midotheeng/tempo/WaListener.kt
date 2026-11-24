@@ -36,13 +36,37 @@ class WaListener : NotificationListenerService() {
         }
     }
 
+    private val unlockReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context, i: android.content.Intent) {
+            AutoReply.onUnlocked(this@WaListener)
+        }
+    }
+    private var unlockRegistered = false
+
     override fun onListenerConnected() {
         instance = this
+        if (!unlockRegistered) {
+            try {
+                androidx.core.content.ContextCompat.registerReceiver(
+                    this, unlockReceiver,
+                    android.content.IntentFilter(android.content.Intent.ACTION_USER_PRESENT),
+                    androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+                )
+                unlockRegistered = true
+            } catch (_: Exception) {
+            }
+        }
         Store.debug(this, "listener connected")
         handler.removeCallbacks(ticker)
         handler.postDelayed(ticker, 10_000)
         sweep()
         Engine.settle(this)
+    }
+
+    override fun onDestroy() {
+        if (unlockRegistered) try { unregisterReceiver(unlockReceiver) } catch (_: Exception) {}
+        unlockRegistered = false
+        super.onDestroy()
     }
 
     override fun onListenerDisconnected() {

@@ -50,10 +50,57 @@ object AutoReply {
         askToSend(ctx, name, text, number)
     }
 
+    private val scheduledInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val waitingForUnlock = java.util.concurrent.ConcurrentLinkedQueue<Pair<String, String>>()
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** Sends a scheduled message. If the phone is locked and there's no other way, waits for you to unlock. */
+    fun sendScheduled(ctx: Context, name: String, text: String) {
+        val now = System.currentTimeMillis()
+        val key = nameKey(name)
+        Store.updateContact(ctx, name) { it.copy(lastAutoReplyAt = now) }
+        scheduledInFlight += key
+
+        Notifier.replyActions[key]?.let { action ->
+            if (sendViaAction(ctx, action, text)) {
+                done(ctx, name, "from the notification")
+                return
+            }
+        }
+        val number = Store.find(ctx, name)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, name)
+        if (number != null && accessibilityOn(ctx)) {
+            if (!unlocked(ctx) || pending != null) {
+                waitingForUnlock += name to text
+                Store.log(ctx, "Scheduled message to $name is ready — it sends as soon as you unlock the phone")
+                return
+            }
+            pending = Triple(name, text, now + 20_000)
+            try {
+                ctx.startActivity(chatIntent(ctx, number, text).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (_: Exception) {
+                pending = null
+            }
+        }
+        scheduledInFlight -= key
+        askToSend(ctx, name, text, number)
+    }
+
+    /** Phone unlocked: send whatever scheduled messages were waiting, one every few seconds. */
+    fun onUnlocked(ctx: Context) {
+        var delay = 1_500L
+        while (true) {
+            val (name, text) = waitingForUnlock.poll() ?: break
+            handler.postDelayed({ sendScheduled(ctx, name, text) }, delay)
+            delay += 9_000L
+        }
+    }
+
     fun done(ctx: Context, name: String, how: String) {
         val now = System.currentTimeMillis()
         Store.updateContact(ctx, name) { it.copy(lastMySend = maxOf(it.lastMySend, now), lastAutoReplyAt = now) }
-        Store.log(ctx, "Auto-replied to $name ($how) — timing their answer")
+        if (scheduledInFlight.remove(nameKey(name))) Store.log(ctx, "Sent scheduled message to $name ($how) — timing their answer")
+        else Store.log(ctx, "Auto-replied to $name ($how) — timing their answer")
         // WhatsApp often re-posts its notification after a reply; clear it again.
         WaListener.sweepSoon()
     }
