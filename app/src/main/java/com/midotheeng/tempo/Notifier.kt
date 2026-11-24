@@ -133,7 +133,7 @@ object Alarms {
         val contacts = Store.get(ctx).contacts
         val next = listOfNotNull(
             contacts.filter { it.held.isNotEmpty() }.minOfOrNull { it.releaseAt },
-            contacts.flatMap { it.scheduled }.minOfOrNull { it.at },
+            Store.get(ctx).schedule.minOfOrNull { it.at },
         ).minOrNull()
         val am = ctx.getSystemService(AlarmManager::class.java)
         val pi = PendingIntent.getBroadcast(

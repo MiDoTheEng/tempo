@@ -36,6 +36,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -170,6 +172,34 @@ private fun typedPhone(ctx: Context, text: String): String? =
 
 @Composable
 private fun Home() {
+    var tab by remember { mutableIntStateOf(0) }
+    val cs = MaterialTheme.colorScheme
+    Scaffold(
+        containerColor = cs.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            NavigationBar(containerColor = cs.surface, tonalElevation = 0.dp) {
+                NavigationBarItem(
+                    selected = tab == 0, onClick = { tab = 0 },
+                    icon = { Icon(Icons.Filled.Person, null) },
+                    label = { Text("Tracking") }
+                )
+                NavigationBarItem(
+                    selected = tab == 1, onClick = { tab = 1 },
+                    icon = { Icon(Icons.Filled.DateRange, null) },
+                    label = { Text("Schedule") }
+                )
+            }
+        }
+    ) { pad ->
+        Box(Modifier.padding(bottom = pad.calculateBottomPadding())) {
+            if (tab == 0) TrackingScreen() else ScheduleScreen()
+        }
+    }
+}
+
+@Composable
+private fun TrackingScreen() {
     val ctx = LocalContext.current
     val state by Store.state.collectAsState()
     var refresh by remember { mutableIntStateOf(0) }
@@ -543,8 +573,6 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
             }
             Spacer(Modifier.height(10.dp))
             AutoReplyBox(c, now)
-            Spacer(Modifier.height(10.dp))
-            ScheduledBox(c, now)
         }
     }
 
@@ -614,139 +642,6 @@ private fun ContactCard(c: Contact, now: Long, flash: Boolean = false) {
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } }
         )
     }
-}
-
-@Composable
-private fun ScheduledBox(c: Contact, now: Long) {
-    val ctx = LocalContext.current
-    val cs = MaterialTheme.colorScheme
-    var adding by remember { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh)
-            .padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 10.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Scheduled messages", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
-                Text(
-                    if (c.scheduled.isEmpty()) "None" else "${c.scheduled.size} planned",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            FilledTonalButton(onClick = { adding = true }, contentPadding = PaddingValues(horizontal = 14.dp)) {
-                Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Schedule")
-            }
-        }
-        c.scheduled.sortedBy { it.at }.forEach { x ->
-            Spacer(Modifier.height(8.dp))
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surface).padding(start = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-                    Text(x.text, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        (if (x.daily) "Every day · next " else "") + fmtWhen(x.at) + " · in " + shortDur(x.at - now) +
-                            if (x.track) "" else " · not timed",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = cs.secondary
-                    )
-                }
-                IconButton(onClick = {
-                    Store.updateContact(ctx, c.name) { it.copy(scheduled = it.scheduled.filter { s -> s.id != x.id }) }
-                    Alarms.scheduleNext(ctx)
-                }) { Icon(Icons.Filled.Close, "Cancel", tint = cs.onSurfaceVariant) }
-            }
-        }
-    }
-    if (adding) ScheduleDialog(c, onClose = { adding = false })
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ScheduleDialog(c: Contact, onClose: () -> Unit) {
-    val ctx = LocalContext.current
-    val cs = MaterialTheme.colorScheme
-    var text by remember { mutableStateOf("") }
-    var at by remember { mutableLongStateOf(System.currentTimeMillis() + 30 * 60_000L) }
-    var daily by remember { mutableStateOf(false) }
-    var track by remember { mutableStateOf(true) }
-
-    fun pickDateTime() {
-        val cal = java.util.Calendar.getInstance().apply { timeInMillis = at }
-        android.app.DatePickerDialog(ctx, { _, y, m, d ->
-            android.app.TimePickerDialog(ctx, { _, h, min ->
-                val pick = java.util.Calendar.getInstance().apply {
-                    set(y, m, d, h, min, 0)
-                    set(java.util.Calendar.MILLISECOND, 0)
-                }
-                at = pick.timeInMillis
-            }, cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE),
-                android.text.format.DateFormat.is24HourFormat(ctx)).show()
-        }, cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH), cal.get(java.util.Calendar.DAY_OF_MONTH)).apply {
-            datePicker.minDate = System.currentTimeMillis() - 1000
-        }.show()
-    }
-
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text("Message to ${c.name}") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = text, onValueChange = { text = it },
-                    minLines = 2,
-                    placeholder = { Text("Your message") },
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(12.dp))
-                Text("When", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
-                Spacer(Modifier.height(6.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("In 5 min" to 5, "In 30 min" to 30, "In 1 h" to 60, "In 3 h" to 180).forEach { (label, m) ->
-                        AssistChip(onClick = { at = System.currentTimeMillis() + m * 60_000L }, label = { Text(label) })
-                    }
-                    AssistChip(onClick = { pickDateTime() }, label = { Text("Pick date & time") })
-                }
-                Spacer(Modifier.height(8.dp))
-                Text("Sends ${fmtWhen(at)}", style = MaterialTheme.typography.titleSmall, color = cs.secondary)
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Every day at this time", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Switch(checked = daily, onCheckedChange = { daily = it })
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Time their reply", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            if (track) "Their answer is timed and held like usual" else "Just send it — their answer isn't timed",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = cs.onSurfaceVariant
-                        )
-                    }
-                    Switch(checked = track, onCheckedChange = { track = it })
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = text.isNotBlank() && at > System.currentTimeMillis(),
-                onClick = {
-                    Store.updateContact(ctx, c.name) {
-                        it.copy(scheduled = it.scheduled + Scheduled(System.currentTimeMillis(), text.trim(), at, daily, track))
-                    }
-                    Store.log(ctx, "Scheduled a message to ${c.name} for ${fmtWhen(at)}" + if (daily) " (every day)" else "")
-                    Alarms.scheduleNext(ctx)
-                    onClose()
-                }
-            ) { Text("Schedule") }
-        },
-        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } }
-    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1370,5 +1265,352 @@ private fun fetchWhatsAppPhoto(ctx: Context, name: String) {
         Toast.makeText(ctx, "Getting $name's photo…", Toast.LENGTH_SHORT).show()
     } catch (_: Exception) {
         Avatars.pendingCapture = null
+    }
+}
+
+// ---------- Schedule section ----------
+
+private fun pickDateTime(ctx: Context, initial: Long, onPicked: (Long) -> Unit) {
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = initial }
+    android.app.DatePickerDialog(ctx, { _, y, m, d ->
+        android.app.TimePickerDialog(ctx, { _, h, min ->
+            val pick = java.util.Calendar.getInstance().apply {
+                set(y, m, d, h, min, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            onPicked(pick.timeInMillis)
+        }, cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE),
+            android.text.format.DateFormat.is24HourFormat(ctx)).show()
+    }, cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH), cal.get(java.util.Calendar.DAY_OF_MONTH)).apply {
+        datePicker.minDate = System.currentTimeMillis() - 1000
+    }.show()
+}
+
+@Composable
+private fun ScheduleScreen() {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    val state by Store.state.collectAsState()
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(20_000)
+            value = System.currentTimeMillis()
+        }
+    }
+    var adding by remember { mutableStateOf(false) }
+    val list = state.schedule.sortedBy { it.at }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().statusBarsPadding(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
+                    .background(Brush.linearGradient(listOf(Forest, ForestLight)))
+            ) {
+                Image(
+                    painterResource(R.drawable.ic_launcher_fg), null,
+                    Modifier.size(190.dp).align(Alignment.TopEnd).offset(x = 52.dp, y = (-34).dp).alpha(0.16f)
+                )
+                Column(Modifier.padding(22.dp)) {
+                    Text("Schedule", style = MaterialTheme.typography.displaySmall, color = Sand)
+                    Text("Messages Tempo sends for you.", style = MaterialTheme.typography.bodyMedium, color = Sand.copy(alpha = 0.7f))
+                    val next = list.firstOrNull()
+                    Spacer(Modifier.height(18.dp))
+                    if (next != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(46.dp).border(2.dp, Amber, CircleShape).padding(3.dp)) { Avatar(next.name, 40.dp) }
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("NEXT · in ${shortDur(next.at - now)}", style = MaterialTheme.typography.labelMedium, letterSpacing = 1.2.sp, color = Amber)
+                                Text("To ${next.name}, ${fmtWhen(next.at)}", style = MaterialTheme.typography.bodyMedium, color = Sand, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    } else {
+                        Text("Nothing planned", style = MaterialTheme.typography.bodySmall, color = Sand.copy(alpha = 0.5f))
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Upcoming", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                Button(onClick = { adding = true }, contentPadding = PaddingValues(horizontal = 16.dp)) {
+                    Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("New")
+                }
+            }
+        }
+
+        if (list.isEmpty()) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = cs.surface),
+                    border = BorderStroke(1.dp, cs.outlineVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("No scheduled messages", style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Write a message, pick who and when — Tempo sends it for you.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = cs.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = { adding = true }) { Text("Schedule a message") }
+                    }
+                }
+            }
+        } else {
+            items(list, key = { it.id }) { x -> ScheduledCard(x, now) }
+        }
+    }
+
+    if (adding) NewScheduleSheet(state, onClose = { adding = false })
+}
+
+@Composable
+private fun ScheduledCard(x: ScheduledMsg, now: Long) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = cs.surface),
+        border = BorderStroke(1.dp, cs.outlineVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(x.name, 46.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(x.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        fmtWhen(x.at) + " · in " + shortDur(x.at - now),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = cs.secondary
+                    )
+                }
+                IconButton(onClick = {
+                    Store.update(ctx) { st -> st.copy(schedule = st.schedule.filter { it.id != x.id }) }
+                    Store.log(ctx, "Cancelled scheduled message to ${x.name}")
+                    Alarms.scheduleNext(ctx)
+                }) { Icon(Icons.Filled.Close, "Cancel", tint = cs.onSurfaceVariant) }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                x.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = cs.onPrimary,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(start = 40.dp)
+                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp))
+                    .background(cs.primary)
+                    .padding(horizontal = 14.dp, vertical = 9.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (x.daily) Tag("Every day")
+                val tracked = Store.find(ctx, x.name) != null
+                if (tracked) Tag(if (x.track) "Reply timed" else "Reply not timed")
+                if (x.number.isNotBlank()) Tag("+${x.number}")
+            }
+        }
+    }
+}
+
+@Composable
+private fun Tag(text: String) {
+    val cs = MaterialTheme.colorScheme
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = cs.onSurfaceVariant,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(cs.surfaceContainerHigh).padding(horizontal = 10.dp, vertical = 4.dp)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun NewScheduleSheet(state: AppState, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var toName by remember { mutableStateOf<String?>(null) }
+    var toNumber by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf("") }
+    var at by remember { mutableLongStateOf(System.currentTimeMillis() + 30 * 60_000L) }
+    var daily by remember { mutableStateOf(false) }
+    var track by remember { mutableStateOf(false) }
+
+    fun choose(name: String) {
+        val typed = typedPhone(ctx, name)
+        if (typed != null) {
+            toName = "+$typed"; toNumber = typed
+        } else {
+            val clean = cleanName(name)
+            toName = clean
+            toNumber = Store.find(ctx, clean)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, clean) ?: ""
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onClose,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = cs.surface
+    ) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            Text("New scheduled message", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(14.dp))
+
+            val name = toName
+            if (name == null) {
+                RecipientPicker(state, onPick = { choose(it) })
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(cs.surfaceContainerHigh).padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Avatar(name, 42.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            if (toNumber.isNotBlank()) "+$toNumber" else "Number not found — sends only after they message you",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (toNumber.isNotBlank()) cs.onSurfaceVariant else cs.error
+                        )
+                    }
+                    TextButton(onClick = { toName = null; toNumber = "" }) { Text("Change") }
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it },
+                    minLines = 3,
+                    placeholder = { Text("Your message") },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                SectionLabel("When")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("In 5 min" to 5, "In 30 min" to 30, "In 1 h" to 60, "In 3 h" to 180).forEach { (label, m) ->
+                        AssistChip(onClick = { at = System.currentTimeMillis() + m * 60_000L }, label = { Text(label) })
+                    }
+                    AssistChip(onClick = { pickDateTime(ctx, at) { at = it } }, label = { Text("Pick date & time") })
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Sends ${fmtWhen(at)}", style = MaterialTheme.typography.titleSmall, color = cs.secondary)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Every day at this time", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Switch(checked = daily, onCheckedChange = { daily = it })
+                }
+                if (Store.find(ctx, name) != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Time their reply", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "They're in Tracking — " + if (track) "their answer is timed and held" else "their answer isn't timed",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = cs.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = track, onCheckedChange = { track = it })
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    enabled = text.isNotBlank() && at > System.currentTimeMillis(),
+                    onClick = {
+                        val x = ScheduledMsg(System.currentTimeMillis(), name, toNumber, text.trim(), at, daily, track)
+                        Store.update(ctx) { it.copy(schedule = it.schedule + x) }
+                        Store.log(ctx, "Scheduled a message to $name for ${fmtWhen(at)}" + if (daily) " (every day)" else "")
+                        Alarms.scheduleNext(ctx)
+                        onClose()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Schedule") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecipientPicker(state: AppState, onPick: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var permTick by remember { mutableIntStateOf(0) }
+    val hasPerm = remember(permTick) { contactsOn(ctx) }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        Avatars.refresh()
+        permTick++
+    }
+    val all = remember(hasPerm) { if (hasPerm) try { loadWhatsAppContacts(ctx) } catch (_: Exception) { emptyList() } else emptyList() }
+    var query by remember { mutableStateOf("") }
+    val q = query.trim()
+    fun match(s: String) = q.isEmpty() || s.contains(q, ignoreCase = true)
+    val tracked = state.contacts.map { it.name }.filter { match(it) }
+    val recent = state.recent.filter { r -> match(r) && tracked.none { nameKey(it) == nameKey(r) } }
+    val list = all.filter { a -> match(a) && tracked.none { nameKey(it) == nameKey(a) } }
+
+    OutlinedTextField(
+        value = query, onValueChange = { query = it },
+        singleLine = true,
+        placeholder = { Text("To: search, name, or +country number") },
+        leadingIcon = { Icon(Icons.Filled.Search, null) },
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth()
+    )
+    val chips = tracked + recent
+    if (chips.isNotEmpty()) {
+        SectionLabel("Tracking & recent chats")
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(chips) { s ->
+                Column(
+                    Modifier.width(66.dp).clip(RoundedCornerShape(12.dp)).clickable { onPick(s) }.padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Avatar(s, 54.dp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(s, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+    SectionLabel("WhatsApp contacts")
+    if (!hasPerm) {
+        Button(onClick = { permLauncher.launch(Manifest.permission.READ_CONTACTS) }) { Text("Allow contacts") }
+    }
+    LazyColumn(Modifier.heightIn(max = 420.dp)) {
+        val typed = typedPhone(ctx, q)
+        if (q.isNotEmpty() && (typed != null || all.none { it.equals(q, ignoreCase = true) })) {
+            item {
+                ListItem(
+                    headlineContent = { Text(if (typed != null) "Send to +$typed" else "Send to “$q”") },
+                    supportingContent = { Text(if (typed != null) "Any WhatsApp number" else "Exactly as WhatsApp shows it") },
+                    leadingContent = {
+                        Box(Modifier.size(42.dp).clip(CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Add, null, tint = cs.onPrimaryContainer)
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { onPick(q) }
+                )
+            }
+        }
+        items(list) { n ->
+            ListItem(
+                headlineContent = { Text(n) },
+                leadingContent = { Avatar(n, 42.dp) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { onPick(n) }
+            )
+        }
     }
 }

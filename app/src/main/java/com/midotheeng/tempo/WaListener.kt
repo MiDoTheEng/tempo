@@ -189,6 +189,16 @@ class WaListener : NotificationListenerService() {
             } catch (_: Exception) {
             }
         }
+        // Keep the Reply button for any 1-to-1 chat, so scheduled messages can go out in the background.
+        if (name != null) {
+            for (i in 0 until NotificationCompat.getActionCount(n)) {
+                val a = NotificationCompat.getAction(n, i) ?: continue
+                if (!a.remoteInputs.isNullOrEmpty()) {
+                    Notifier.replyActions[nameKey(name)] = a
+                    break
+                }
+            }
+        }
         val contact = found
         if (contact == null) {
             Store.debug(this, "  not watched: \"${name ?: "?"}\"")

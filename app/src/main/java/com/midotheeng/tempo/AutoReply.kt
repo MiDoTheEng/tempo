@@ -51,15 +51,17 @@ object AutoReply {
     }
 
     private val scheduledInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-    private val waitingForUnlock = java.util.concurrent.ConcurrentLinkedQueue<Triple<String, String, Boolean>>()
+    private data class Job(val name: String, val text: String, val track: Boolean, val number: String?)
+    private val waitingForUnlock = java.util.concurrent.ConcurrentLinkedQueue<Job>()
     private val untrackedInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
     /** Sends a scheduled message. If the phone is locked and there's no other way, waits for you to unlock. */
-    fun sendScheduled(ctx: Context, name: String, text: String, track: Boolean = true) {
+    fun sendScheduled(ctx: Context, name: String, text: String, track: Boolean = true, knownNumber: String? = null) {
         val now = System.currentTimeMillis()
         val key = nameKey(name)
-        if (track) {
+        val tracked = Store.find(ctx, name) != null
+        if (track && tracked) {
             Store.updateContact(ctx, name) { it.copy(lastAutoReplyAt = now) }
             untrackedInFlight -= key
         } else {
@@ -74,10 +76,10 @@ object AutoReply {
                 return
             }
         }
-        val number = Store.find(ctx, name)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, name)
+        val number = knownNumber ?: Store.find(ctx, name)?.number?.takeIf { it.isNotBlank() } ?: Avatars.whatsAppNumber(ctx, name)
         if (number != null && accessibilityOn(ctx)) {
             if (!unlocked(ctx) || pending != null) {
-                waitingForUnlock += Triple(name, text, track)
+                waitingForUnlock += Job(name, text, track, number)
                 Store.log(ctx, "Scheduled message to $name is ready — it sends as soon as you unlock the phone")
                 return
             }
@@ -97,8 +99,8 @@ object AutoReply {
     fun onUnlocked(ctx: Context) {
         var delay = 1_500L
         while (true) {
-            val (name, text, track) = waitingForUnlock.poll() ?: break
-            handler.postDelayed({ sendScheduled(ctx, name, text, track) }, delay)
+            val j = waitingForUnlock.poll() ?: break
+            handler.postDelayed({ sendScheduled(ctx, j.name, j.text, j.track, j.number) }, delay)
             delay += 9_000L
         }
     }

@@ -170,22 +170,20 @@ object Engine {
         replying.forEach { AutoReply.send(ctx, it.name, it.autoReply) }
 
         // Scheduled messages that are due.
-        val dueSched = mutableListOf<Pair<String, Scheduled>>()
+        val dueSched = mutableListOf<ScheduledMsg>()
         Store.update(ctx) { st ->
-            st.copy(contacts = st.contacts.map { c ->
-                val (dueNow, later) = c.scheduled.partition { it.at <= now }
-                if (dueNow.isEmpty()) c else {
-                    dueNow.forEach { dueSched += c.name to it }
-                    val again = dueNow.filter { it.daily }.map { x ->
-                        var next = x.at
-                        while (next <= now) next += 24 * 60 * 60_000L
-                        x.copy(at = next)
-                    }
-                    c.copy(scheduled = later + again)
+            val (dueNow, later) = st.schedule.partition { it.at <= now }
+            if (dueNow.isEmpty()) st else {
+                dueSched += dueNow
+                val again = dueNow.filter { it.daily }.map { x ->
+                    var next = x.at
+                    while (next <= now) next += 24 * 60 * 60_000L
+                    x.copy(at = next)
                 }
-            })
+                st.copy(schedule = later + again)
+            }
         }
-        dueSched.forEach { (name, x) -> AutoReply.sendScheduled(ctx, name, x.text, x.track) }
+        dueSched.forEach { x -> AutoReply.sendScheduled(ctx, x.name, x.text, x.track, x.number.takeIf { it.isNotBlank() }) }
         Alarms.scheduleNext(ctx)
     }
 }

@@ -14,7 +14,18 @@ const val MODE_FIXED = "fixed"
 
 data class Msg(val text: String, val time: Long)
 
-/** A message Tempo sends for you at a set time (optionally every day). */
+/** A message Tempo sends for you at a set time (optionally every day) — to anyone. */
+data class ScheduledMsg(
+    val id: Long,
+    val name: String,
+    val number: String,
+    val text: String,
+    val at: Long,
+    val daily: Boolean,
+    val track: Boolean,
+)
+
+/** (old, per-contact schedule — migrated into AppState.schedule) */
 data class Scheduled(val id: Long, val text: String, val at: Long, val daily: Boolean, val track: Boolean = true)
 
 data class Contact(
@@ -61,6 +72,7 @@ data class AppState(
     val contacts: List<Contact> = emptyList(),
     val recent: List<String> = emptyList(),
     val log: List<String> = emptyList(),
+    val schedule: List<ScheduledMsg> = emptyList(),
 )
 
 fun nameKey(name: String): String = cleanName(name).lowercase(Locale.ROOT)
@@ -265,6 +277,12 @@ object Store {
             }
         })
         put("debug", s.debug)
+        put("schedule", JSONArray().apply {
+            s.schedule.forEach { x ->
+                put(JSONObject().put("id", x.id).put("n", x.name).put("num", x.number).put("t", x.text)
+                    .put("at", x.at).put("d", x.daily).put("tr", x.track))
+            }
+        })
         put("recent", JSONArray(s.recent))
         put("log", JSONArray(s.log))
     }
@@ -300,7 +318,24 @@ object Store {
                 lastAutoReplyAt = c.optLong("arAt"),
             )
         }
-        return AppState(o.optBoolean("debug", false), contacts, strings(o.optJSONArray("recent")), strings(o.optJSONArray("log")))
+        val sched = o.optJSONArray("schedule")?.let { a ->
+            (0 until a.length()).map { i ->
+                val x = a.getJSONObject(i)
+                ScheduledMsg(x.optLong("id"), x.optString("n"), x.optString("num"), x.optString("t"),
+                    x.optLong("at"), x.optBoolean("d"), x.optBoolean("tr", false))
+            }
+        } ?: emptyList()
+        // Move any old per-contact scheduled messages into the Schedule section.
+        val migrated = contacts.flatMap { c ->
+            c.scheduled.map { x -> ScheduledMsg(x.id, c.name, c.number, x.text, x.at, x.daily, x.track) }
+        }
+        return AppState(
+            debug = o.optBoolean("debug", false),
+            contacts = contacts.map { it.copy(scheduled = emptyList()) },
+            recent = strings(o.optJSONArray("recent")),
+            log = strings(o.optJSONArray("log")),
+            schedule = sched + migrated,
+        )
     }
 }
 
