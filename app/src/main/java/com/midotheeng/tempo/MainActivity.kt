@@ -1308,6 +1308,7 @@ private fun ScheduleScreen() {
         }
     }
     var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<ScheduledMsg?>(null) }
     val list = state.schedule.sortedBy { it.at }
 
     LazyColumn(
@@ -1378,22 +1379,23 @@ private fun ScheduleScreen() {
                 }
             }
         } else {
-            items(list, key = { it.id }) { x -> ScheduledCard(x, now) }
+            items(list, key = { it.id }) { x -> ScheduledCard(x, now, onEdit = { editing = x }) }
         }
     }
 
     if (adding) NewScheduleSheet(state, onClose = { adding = false })
+    editing?.let { e -> NewScheduleSheet(state, editing = e, onClose = { editing = null }) }
 }
 
 @Composable
-private fun ScheduledCard(x: ScheduledMsg, now: Long) {
+private fun ScheduledCard(x: ScheduledMsg, now: Long, onEdit: () -> Unit) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = cs.surface),
         border = BorderStroke(1.dp, cs.outlineVariant),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).clickable(onClick = onEdit)
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1431,6 +1433,8 @@ private fun ScheduledCard(x: ScheduledMsg, now: Long) {
                 val tracked = Store.find(ctx, x.name) != null
                 if (tracked) Tag(if (x.track) "Reply timed" else "Reply not timed")
                 if (x.number.isNotBlank()) Tag("+${x.number}")
+                Spacer(Modifier.weight(1f))
+                Text("Tap to edit", style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
             }
         }
     }
@@ -1449,15 +1453,17 @@ private fun Tag(text: String) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun NewScheduleSheet(state: AppState, onClose: () -> Unit) {
+private fun NewScheduleSheet(state: AppState, editing: ScheduledMsg? = null, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
-    var toName by remember { mutableStateOf<String?>(null) }
-    var toNumber by remember { mutableStateOf("") }
-    var text by remember { mutableStateOf("") }
-    var at by remember { mutableLongStateOf(System.currentTimeMillis() + 30 * 60_000L) }
-    var daily by remember { mutableStateOf(false) }
-    var track by remember { mutableStateOf(false) }
+    var toName by remember { mutableStateOf(editing?.name) }
+    var toNumber by remember { mutableStateOf(editing?.number ?: "") }
+    var text by remember { mutableStateOf(editing?.text ?: "") }
+    var at by remember { mutableLongStateOf(editing?.at ?: (System.currentTimeMillis() + 30 * 60_000L)) }
+    var daily by remember { mutableStateOf(editing?.daily ?: false) }
+    var track by remember { mutableStateOf(editing?.track ?: false) }
+    /** Which "When" option is picked: minutes for the quick ones, -1 for a picked date & time. */
+    var choice by remember { mutableIntStateOf(if (editing != null) -1 else 30) }
 
     fun choose(name: String) {
         val typed = typedPhone(ctx, name)
@@ -1476,7 +1482,7 @@ private fun NewScheduleSheet(state: AppState, onClose: () -> Unit) {
         containerColor = cs.surface
     ) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp).imePadding()) {
-            Text("New scheduled message", style = MaterialTheme.typography.headlineSmall)
+            Text(if (editing != null) "Edit scheduled message" else "New scheduled message", style = MaterialTheme.typography.headlineSmall)
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             Spacer(Modifier.height(14.dp))
 
@@ -1509,11 +1515,28 @@ private fun NewScheduleSheet(state: AppState, onClose: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 )
                 SectionLabel("When")
+                val chipColors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = cs.secondary,
+                    selectedLabelColor = cs.onSecondary,
+                    selectedLeadingIconColor = cs.onSecondary
+                )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("In 5 min" to 5, "In 30 min" to 30, "In 1 h" to 60, "In 3 h" to 180).forEach { (label, m) ->
-                        AssistChip(onClick = { at = System.currentTimeMillis() + m * 60_000L }, label = { Text(label) })
+                        FilterChip(
+                            selected = choice == m,
+                            onClick = { choice = m; at = System.currentTimeMillis() + m * 60_000L },
+                            label = { Text(label) },
+                            leadingIcon = if (choice == m) { { Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) } } else null,
+                            colors = chipColors
+                        )
                     }
-                    AssistChip(onClick = { pickDateTime(ctx, at) { at = it } }, label = { Text("Pick date & time") })
+                    FilterChip(
+                        selected = choice == -1,
+                        onClick = { pickDateTime(ctx, at) { at = it; choice = -1 } },
+                        label = { Text(if (choice == -1) fmtWhen(at) else "Pick date & time") },
+                        leadingIcon = if (choice == -1) { { Icon(Icons.Filled.DateRange, null, Modifier.size(16.dp)) } } else null,
+                        colors = chipColors
+                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text("Sends ${fmtWhen(at)}", style = MaterialTheme.typography.titleSmall, color = cs.secondary)
@@ -1539,14 +1562,27 @@ private fun NewScheduleSheet(state: AppState, onClose: () -> Unit) {
                 Button(
                     enabled = text.isNotBlank() && at > System.currentTimeMillis(),
                     onClick = {
-                        val x = ScheduledMsg(System.currentTimeMillis(), name, toNumber, text.trim(), at, daily, track)
-                        Store.update(ctx) { it.copy(schedule = it.schedule + x) }
-                        Store.log(ctx, "Scheduled a message to $name for ${fmtWhen(at)}" + if (daily) " (every day)" else "")
+                        val x = ScheduledMsg(editing?.id ?: System.currentTimeMillis(), name, toNumber, text.trim(), at, daily, track)
+                        Store.update(ctx) { st ->
+                            st.copy(schedule = if (editing != null) st.schedule.map { if (it.id == editing.id) x else it } else st.schedule + x)
+                        }
+                        Store.log(ctx, (if (editing != null) "Updated" else "Scheduled") + " a message to $name for ${fmtWhen(at)}" + if (daily) " (every day)" else "")
                         Alarms.scheduleNext(ctx)
                         onClose()
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Schedule") }
+                ) { Text(if (editing != null) "Save changes" else "Schedule") }
+                if (editing != null) {
+                    TextButton(
+                        onClick = {
+                            Store.update(ctx) { st -> st.copy(schedule = st.schedule.filter { it.id != editing.id }) }
+                            Store.log(ctx, "Cancelled scheduled message to $name")
+                            Alarms.scheduleNext(ctx)
+                            onClose()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Delete this message", color = cs.error) }
+                }
             }
             }
             HideKeyboardButton()
