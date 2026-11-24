@@ -81,6 +81,7 @@ object AutoReply {
             if (!unlocked(ctx) || pending != null) {
                 waitingForUnlock += Job(name, text, track, number)
                 Store.log(ctx, "Scheduled message to $name is ready — it sends as soon as you unlock the phone")
+                showWaiting(ctx)
                 return
             }
             pending = Triple(name, text, now + 20_000)
@@ -96,7 +97,38 @@ object AutoReply {
     }
 
     /** Phone unlocked: send whatever scheduled messages were waiting, one every few seconds. */
+    private const val WAITING_ID = 4242
+
+    /** Lock-screen notification: scheduled messages are waiting for you to unlock. */
+    private fun showWaiting(ctx: Context) {
+        val names = waitingForUnlock.map { it.name }.distinct()
+        if (names.isEmpty()) return
+        Notifier.ensureChannel(ctx)
+        val count = waitingForUnlock.size
+        val title = if (count == 1) "1 scheduled message is waiting" else "$count scheduled messages are waiting"
+        val body = "Unlock your phone to send to ${names.joinToString(", ")}"
+        val open = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)?.let {
+            PendingIntent.getActivity(ctx, WAITING_ID, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        }
+        val n = NotificationCompat.Builder(ctx, "tempo_messages")
+            .setSmallIcon(R.drawable.ic_notif)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .apply { open?.let { setContentIntent(it) } }
+            .build()
+        try {
+            NotificationManagerCompat.from(ctx).notify(WAITING_ID, n)
+        } catch (_: SecurityException) {
+        }
+    }
+
     fun onUnlocked(ctx: Context) {
+        NotificationManagerCompat.from(ctx).cancel(WAITING_ID)
         var delay = 1_500L
         while (true) {
             val j = waitingForUnlock.poll() ?: break
