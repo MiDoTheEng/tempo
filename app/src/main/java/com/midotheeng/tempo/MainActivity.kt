@@ -23,6 +23,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -1086,9 +1088,9 @@ private fun AddSheet(state: AppState, onDismiss: () -> Unit) {
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = cs.surface
     ) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp).imePadding()) {
             Text("Add someone", style = MaterialTheme.typography.headlineSmall)
-            HideKeyboardButton()
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             Spacer(Modifier.height(14.dp))
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -1175,6 +1177,8 @@ private fun AddSheet(state: AppState, onDismiss: () -> Unit) {
                     }
                 }
             }
+            }
+            HideKeyboardButton()
         }
     }
 }
@@ -1471,9 +1475,9 @@ private fun NewScheduleSheet(state: AppState, onClose: () -> Unit) {
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = cs.surface
     ) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp).imePadding()) {
             Text("New scheduled message", style = MaterialTheme.typography.headlineSmall)
-            HideKeyboardButton()
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             Spacer(Modifier.height(14.dp))
 
             val name = toName
@@ -1544,6 +1548,8 @@ private fun NewScheduleSheet(state: AppState, onClose: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Schedule") }
             }
+            }
+            HideKeyboardButton()
         }
     }
 }
